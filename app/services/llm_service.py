@@ -48,7 +48,9 @@ class LLMService:
         receiver_id: str,
     ) -> LLMResponse:
         """
-        Analyzes a transaction for AML/KYC risk.
+        Analyzes a transaction for AML/KYC risk (simple mode).
+        
+        For production, use analyze_with_tools() instead.
         
         Args:
             comment: Transaction comment text
@@ -62,6 +64,44 @@ class LLMService:
         return self._provider.analyze_transaction(
             comment=comment,
             amount=amount,
+            sender_id=sender_id,
+            receiver_id=receiver_id,
+        )
+    
+    def analyze_with_tools(
+        self,
+        comment: str,
+        amount: float,
+        currency: str,
+        sender_id: str,
+        receiver_id: str,
+    ) -> LLMResponse:
+        """
+        Analyzes a transaction using agent mode with tool calling.
+        
+        This is the RECOMMENDED method for production. It uses function calling
+        to ground the LLM's decisions in real data (sanctions lists, thresholds).
+        
+        The LLM will:
+        1. Check entities against sanctions lists
+        2. Validate amounts against reporting thresholds
+        3. Check for PEP status when appropriate
+        4. Synthesize a final risk assessment based on tool results
+        
+        Args:
+            comment: Transaction comment text
+            amount: Transaction amount
+            currency: Currency code (USD, EUR, etc.)
+            sender_id: Sender identifier
+            receiver_id: Receiver identifier
+            
+        Returns:
+            Structured LLMResponse with risk assessment and tool usage info
+        """
+        return self._provider.analyze_with_tools(
+            comment=comment,
+            amount=amount,
+            currency=currency,
             sender_id=sender_id,
             receiver_id=receiver_id,
         )

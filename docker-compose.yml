@@ -1,8 +1,101 @@
-version: "3.8"
-
 services:
+  # ============================================
+  # Streamlit UI
+  # ============================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kyc-app
+    ports:
+      - "8501:8501"
+    environment:
+      # Environment mode
+      ENV: LOCAL
+      # Database connection (uses Docker network hostname)
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_NAME: kyc_db
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: localdevpassword123
+      # LLM Provider (override in .env or here)
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1}
+      # Azure OpenAI (if using azure provider)
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_DEPLOYMENT_NAME: ${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-4.1}
+      # Anthropic (if using anthropic provider)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Ollama (if using ollama provider)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      # RAG / Vector Search (set to false to disable)
+      RAG_ENABLED: ${RAG_ENABLED:-true}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+  # ============================================
+  # FastAPI REST API
+  # ============================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: kyc-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Environment mode
+      ENV: LOCAL
+      # Database connection (uses Docker network hostname)
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_NAME: kyc_db
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: localdevpassword123
+      # LLM Provider (override in .env or here)
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1}
+      # Azure OpenAI (if using azure provider)
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_DEPLOYMENT_NAME: ${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-4.1}
+      # Anthropic (if using anthropic provider)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Ollama (if using ollama provider)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      # RAG / Vector Search (set to false to disable)
+      RAG_ENABLED: ${RAG_ENABLED:-true}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+  # ============================================
+  # Database (with pgvector for RAG)
+  # ============================================
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: kyc-postgres
     environment:
       POSTGRES_USER: postgres
@@ -20,4 +113,3 @@ services:
 
 volumes:
   postgres_data:
-

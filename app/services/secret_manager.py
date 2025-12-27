@@ -47,12 +47,12 @@ class Settings(BaseSettings):
     # Azure OpenAI settings (provider: azure)
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
-    azure_openai_deployment_name: str = "gpt-4"
-    azure_openai_api_version: str = "2024-02-01"
+    azure_openai_deployment_name: str = "gpt-4.1"
+    azure_openai_api_version: str = "2024-12-01-preview"  # Latest API version
     
     # OpenAI settings (provider: openai)
     openai_api_key: str = ""
-    openai_model: str = "gpt-4"
+    openai_model: str = "gpt-4.1"  # Modern model with good tool calling support
     
     # Anthropic settings (provider: anthropic)
     anthropic_api_key: str = ""
@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     
     # Azure Key Vault (for CLOUD mode)
     azure_keyvault_url: str = ""
+    
+    # RAG / Vector Search (can be disabled)
+    rag_enabled: bool = True
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536
     
     @property
     def is_local(self) -> bool:

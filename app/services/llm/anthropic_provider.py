@@ -15,7 +15,7 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from app.services.llm.base import BaseLLMProvider, AML_SYSTEM_PROMPT
+from app.services.llm.base import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +84,26 @@ class AnthropicProvider(BaseLLMProvider):
         except anthropic.APIError as e:
             logger.error(f"Anthropic API error: {e}")
             raise
+    
+    def _call_api_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        temperature: float = 0.1,
+        max_tokens: int = 1000,
+    ) -> dict:
+        """
+        Tool calling for Anthropic.
+        
+        Note: Anthropic has its own tool format. For simplicity in this MVP,
+        we fall back to simple mode. Full implementation would convert
+        OpenAI tool format to Anthropic's format.
+        """
+        # TODO: Implement full Anthropic tool calling
+        # For now, fall back to simple mode
+        logger.warning("Anthropic tool calling not fully implemented, using simple mode")
+        content = self._call_api(messages, temperature, max_tokens)
+        return {"content": content, "tool_calls": None}
     
     def get_model_version(self) -> str:
         return self._model_version

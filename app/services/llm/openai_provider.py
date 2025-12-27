@@ -73,7 +73,7 @@ class OpenAIProvider(BaseLLMProvider):
                 "model": self.model,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": max_tokens,
+                "max_completion_tokens": max_tokens,  # New API parameter for modern models
             }
             
             # Add JSON mode if supported
@@ -95,6 +95,63 @@ class OpenAIProvider(BaseLLMProvider):
                 self._supports_json_mode = False
                 return self._call_api(messages, temperature, max_tokens)
             raise
+        except RateLimitError:
+            logger.warning("OpenAI rate limit hit, will retry...")
+            raise
+        except APIError as e:
+            logger.error(f"OpenAI API error: {e}")
+            raise
+    
+    @retry(
+        retry=retry_if_exception_type(RateLimitError),
+        wait=wait_exponential(multiplier=1, min=4, max=60),
+        stop=stop_after_attempt(3),
+    )
+    def _call_api_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        temperature: float = 0.1,
+        max_tokens: int = 1000,
+    ) -> dict:
+        """
+        Makes API call with function/tool calling support.
+        
+        Returns dict with 'content' and optional 'tool_calls'.
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=temperature,
+                max_completion_tokens=max_tokens,  # New API parameter for modern models
+            )
+            
+            message = response.choices[0].message
+            
+            result = {
+                "content": message.content,
+                "tool_calls": None,
+            }
+            
+            # Extract tool calls if present
+            if message.tool_calls:
+                result["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in message.tool_calls
+                ]
+            
+            return result
+            
         except RateLimitError:
             logger.warning("OpenAI rate limit hit, will retry...")
             raise

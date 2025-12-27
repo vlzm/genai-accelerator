@@ -124,6 +124,24 @@ class OllamaProvider(BaseLLMProvider):
             logger.error(f"Ollama connection error: {e}")
             raise
     
+    def _call_api_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        temperature: float = 0.1,
+        max_tokens: int = 1000,
+    ) -> dict:
+        """
+        Tool calling for Ollama.
+        
+        Note: Ollama has limited tool support. For simplicity in this MVP,
+        we fall back to simple mode.
+        """
+        # TODO: Implement Ollama tool calling (requires compatible models)
+        logger.warning("Ollama tool calling not implemented, using simple mode")
+        content = self._call_api(messages, temperature, max_tokens)
+        return {"content": content, "tool_calls": None}
+    
     def get_model_version(self) -> str:
         return self._model_version
 

@@ -70,10 +70,22 @@ def init_db() -> None:
     
     Creates all tables defined in SQLModel metadata.
     Safe to call multiple times (uses CREATE IF NOT EXISTS).
+    
+    If RAG_ENABLED=true, also activates pgvector extension for similarity search.
     """
+    from sqlalchemy import text
     from app.models import Transaction, RiskReport  # noqa: F401 - Import for side effects
+    from app.services.secret_manager import get_settings
     
     engine = get_engine()
+    settings = get_settings()
+    
+    # Enable pgvector extension if RAG is enabled
+    if settings.rag_enabled:
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            conn.commit()
+    
     SQLModel.metadata.create_all(engine)
 
 
