@@ -42,6 +42,7 @@ infra/*.tfstate
 infra/*.tfstate.*
 infra/*.tfplan
 infra/.terraform.lock.hcl
+infra/terraform.tfvars
 
 # Docker
 *.log
