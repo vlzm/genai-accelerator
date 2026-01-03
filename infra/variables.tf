@@ -1,7 +1,7 @@
 variable "project_name" {
   description = "Project name prefix for all resources"
   type        = string
-  default     = "kyc"
+  default     = "genai"
 }
 
 variable "location" {
@@ -33,10 +33,3 @@ variable "openai_model" {
   type        = string
   default     = "gpt-4.1"
 }
-
-variable "rag_enabled" {
-  description = "Enable RAG functionality"
-  type        = bool
-  default     = true
-}
-

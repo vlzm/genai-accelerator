@@ -1,9 +1,9 @@
 # =============================================================================
-# 🚀 Production CI/CD Pipeline for Secure KYC/AML Analyzer
+# 🚀 Production CI/CD Pipeline for Azure GenAI Accelerator
 # =============================================================================
 # 
-# This is a "Phantom Pipeline" - a production-ready CI/CD configuration that
-# demonstrates enterprise best practices for Azure deployments.
+# This is a production-ready CI/CD configuration that demonstrates 
+# enterprise best practices for Azure deployments.
 #
 # KEY SECURITY FEATURES:
 # 1. OIDC Authentication - No long-lived secrets stored in GitHub
@@ -16,7 +16,7 @@
 # - Enable GitHub Actions OIDC token permissions
 # =============================================================================
 
-name: 🚀 Secure KYC Analyzer Pipeline
+name: 🚀 GenAI Accelerator Pipeline
 
 on:
   push:
@@ -38,12 +38,12 @@ env:
   
   # Resource names (must match Terraform configuration)
   # Format: ${project_name}acr${environment}
-  ACR_NAME: "kycacrdev"
+  ACR_NAME: "genaiacrdev"
   # Format: rg-${project_name}-${environment}
-  RG_NAME: "rg-kyc-dev"
+  RG_NAME: "rg-genai-dev"
   # Container App names from Terraform
-  API_APP_NAME: "kyc-api"
-  UI_APP_NAME: "kyc-app"
+  API_APP_NAME: "genai-api"
+  UI_APP_NAME: "genai-app"
   # Python version matching Dockerfile
   PYTHON_VERSION: "3.12"
 
@@ -84,7 +84,6 @@ jobs:
           echo "Running Bandit SAST scanner for security vulnerabilities..."
           bandit -r ./app -x ./tests -f txt -ll
           # -ll: Only report medium and high severity issues
-          # This is a CRITICAL check for banking/FinTech applications
 
       - name: 🧪 Unit Tests
         run: |
@@ -101,9 +100,6 @@ jobs:
     name: 🏗️ Infrastructure Validation
     needs: quality-check
     runs-on: ubuntu-latest
-    
-    # Only run infra validation if infra files changed
-    # This saves time and Azure API calls
     
     steps:
       - name: 📥 Checkout Code
@@ -163,8 +159,8 @@ jobs:
 
       - name: 🏗️ Build & Push API Image
         run: |
-          IMAGE_TAG="${{ env.ACR_NAME }}.azurecr.io/kyc-api:${{ github.sha }}"
-          IMAGE_LATEST="${{ env.ACR_NAME }}.azurecr.io/kyc-api:latest"
+          IMAGE_TAG="${{ env.ACR_NAME }}.azurecr.io/genai-api:${{ github.sha }}"
+          IMAGE_LATEST="${{ env.ACR_NAME }}.azurecr.io/genai-api:latest"
           
           echo "Building API image with tag: $IMAGE_TAG"
           docker build -f Dockerfile.api -t $IMAGE_TAG -t $IMAGE_LATEST .
@@ -175,8 +171,8 @@ jobs:
 
       - name: 🏗️ Build & Push UI (Streamlit) Image
         run: |
-          IMAGE_TAG="${{ env.ACR_NAME }}.azurecr.io/kyc-app:${{ github.sha }}"
-          IMAGE_LATEST="${{ env.ACR_NAME }}.azurecr.io/kyc-app:latest"
+          IMAGE_TAG="${{ env.ACR_NAME }}.azurecr.io/genai-app:${{ github.sha }}"
+          IMAGE_LATEST="${{ env.ACR_NAME }}.azurecr.io/genai-app:latest"
           
           echo "Building UI image with tag: $IMAGE_TAG"
           docker build -f Dockerfile -t $IMAGE_TAG -t $IMAGE_LATEST .
@@ -191,7 +187,7 @@ jobs:
           az containerapp update \
             --name ${{ env.API_APP_NAME }} \
             --resource-group ${{ env.RG_NAME }} \
-            --image ${{ env.ACR_NAME }}.azurecr.io/kyc-api:${{ github.sha }}
+            --image ${{ env.ACR_NAME }}.azurecr.io/genai-api:${{ github.sha }}
 
       - name: 🚀 Deploy UI to Container Apps
         run: |
@@ -199,7 +195,7 @@ jobs:
           az containerapp update \
             --name ${{ env.UI_APP_NAME }} \
             --resource-group ${{ env.RG_NAME }} \
-            --image ${{ env.ACR_NAME }}.azurecr.io/kyc-app:${{ github.sha }}
+            --image ${{ env.ACR_NAME }}.azurecr.io/genai-app:${{ github.sha }}
 
       - name: 📊 Deployment Summary
         run: |
@@ -211,4 +207,3 @@ jobs:
           echo "| UI | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🔗 View in Azure Portal: [Container Apps](https://portal.azure.com/#@/resource/subscriptions/${{ env.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.RG_NAME }}/providers/Microsoft.App/containerApps)" >> $GITHUB_STEP_SUMMARY
-

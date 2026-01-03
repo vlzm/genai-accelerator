@@ -1,4 +1,4 @@
-# Secure KYC/AML Analyzer
+# Azure GenAI Accelerator
 # Multi-stage build for smaller image size
 
 # ============================================
@@ -62,4 +62,3 @@ CMD ["streamlit", "run", "app/main.py", \
      "--server.address=0.0.0.0", \
      "--server.headless=true", \
      "--browser.gatherUsageStats=false"]
-

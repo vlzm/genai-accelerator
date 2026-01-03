@@ -1,102 +1,131 @@
 """
 Tool definitions for LLM Function Calling.
 
+EXAMPLE FILE - Customize for your use case.
+
 Contains JSON Schema definitions that describe available tools to the LLM.
 These definitions follow the OpenAI tools format.
 """
 
 from typing import Callable, Optional
+import json
 
-from app.services.tools.sanctions import check_sanctions_list, check_pep_status
-from app.services.tools.thresholds import validate_amount_threshold
+# ============================================================================
+# EXAMPLE TOOL DEFINITIONS
+# ============================================================================
+# Uncomment and customize these for your specific use case.
+# These definitions tell the LLM what tools are available.
 
-
-# Tool definitions in OpenAI format
-TOOL_DEFINITIONS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "check_sanctions_list",
-            "description": (
-                "Checks if a person or company is on global sanctions lists "
-                "(OFAC, EU, UN, INTERPOL). ALWAYS use this tool when you identify "
-                "a person or company name in the transaction. This is mandatory "
-                "for AML compliance."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "entity_name": {
-                        "type": "string",
-                        "description": "Full name of the person or company to check",
-                    }
-                },
-                "required": ["entity_name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "check_pep_status",
-            "description": (
-                "Checks if a person is a Politically Exposed Person (PEP). "
-                "PEPs include government officials, their family members, and "
-                "close associates. Use this for high-value transactions or "
-                "when dealing with individuals in positions of power."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "person_name": {
-                        "type": "string",
-                        "description": "Full name of the person to check",
-                    }
-                },
-                "required": ["person_name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "validate_amount_threshold",
-            "description": (
-                "Validates transaction amount against regulatory reporting thresholds. "
-                "Detects if a Currency Transaction Report (CTR) is required and "
-                "identifies potential structuring (splitting transactions to avoid "
-                "reporting). Use this for all transactions."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "amount": {
-                        "type": "number",
-                        "description": "Transaction amount",
-                    },
-                    "currency": {
-                        "type": "string",
-                        "description": "Currency code (USD, EUR, GBP, etc.)",
-                        "default": "USD",
-                    },
-                    "transaction_count_24h": {
-                        "type": "integer",
-                        "description": "Optional: number of transactions by this sender in last 24 hours",
-                    },
-                },
-                "required": ["amount"],
-            },
-        },
-    },
-]
+# TOOL_DEFINITIONS = [
+#     {
+#         "type": "function",
+#         "function": {
+#             "name": "lookup_database",
+#             "description": (
+#                 "Looks up information in the database. "
+#                 "Use this when you need to verify or retrieve data."
+#             ),
+#             "parameters": {
+#                 "type": "object",
+#                 "properties": {
+#                     "query": {
+#                         "type": "string",
+#                         "description": "The search query or entity name",
+#                     },
+#                     "table": {
+#                         "type": "string",
+#                         "description": "The table to search (optional)",
+#                     },
+#                 },
+#                 "required": ["query"],
+#             },
+#         },
+#     },
+#     {
+#         "type": "function",
+#         "function": {
+#             "name": "validate_data",
+#             "description": (
+#                 "Validates data against business rules. "
+#                 "Use this to check if data meets requirements."
+#             ),
+#             "parameters": {
+#                 "type": "object",
+#                 "properties": {
+#                     "data": {
+#                         "type": "string",
+#                         "description": "The data to validate",
+#                     },
+#                     "rule_type": {
+#                         "type": "string",
+#                         "description": "Type of validation rule to apply",
+#                     },
+#                 },
+#                 "required": ["data"],
+#             },
+#         },
+#     },
+# ]
 
 
+# ============================================================================
+# EXAMPLE TOOL IMPLEMENTATIONS
+# ============================================================================
+
+def lookup_database(query: str, table: Optional[str] = None) -> str:
+    """
+    Example database lookup function.
+    
+    Replace this with actual database queries for your use case.
+    
+    Args:
+        query: Search query
+        table: Optional table name
+        
+    Returns:
+        JSON string with lookup results
+    """
+    # TODO: Implement actual database lookup
+    return json.dumps({
+        "found": False,
+        "message": f"No results found for '{query}'",
+        "table": table,
+    })
+
+
+def validate_data(data: str, rule_type: Optional[str] = None) -> str:
+    """
+    Example data validation function.
+    
+    Replace this with actual validation logic for your use case.
+    
+    Args:
+        data: Data to validate
+        rule_type: Type of validation rule
+        
+    Returns:
+        JSON string with validation results
+    """
+    # TODO: Implement actual validation logic
+    return json.dumps({
+        "valid": True,
+        "data": data,
+        "rule_type": rule_type or "default",
+    })
+
+
+# ============================================================================
+# TOOL REGISTRY
+# ============================================================================
 # Mapping of function names to actual Python functions
+
 TOOL_FUNCTIONS: dict[str, Callable] = {
-    "check_sanctions_list": check_sanctions_list,
-    "check_pep_status": check_pep_status,
-    "validate_amount_threshold": validate_amount_threshold,
+    "lookup_database": lookup_database,
+    "validate_data": validate_data,
 }
+
+# Empty by default - uncomment the definitions above to enable tools
+TOOL_DEFINITIONS: list = []
 
 
 def get_tool_by_name(name: str) -> Optional[Callable]:
@@ -131,4 +160,3 @@ def execute_tool(name: str, arguments: dict) -> str:
         raise ValueError(f"Unknown tool: {name}")
     
     return func(**arguments)
-

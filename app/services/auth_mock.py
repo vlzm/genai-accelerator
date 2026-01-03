@@ -1,7 +1,7 @@
 """
 Mock Identity Provider for local development.
 
-In production, this would be replaced by Azure AD (Entra ID) integration.
+In production, this would be replaced by Azure Entra ID (Azure AD) integration.
 This module simulates user authentication and authorization for demo purposes.
 
 Implements:
@@ -74,7 +74,7 @@ class UserProfile(BaseModel):
     """
     User profile model representing authenticated user.
     
-    In production, these claims would come from Azure AD token.
+    In production, these claims would come from Azure Entra ID token.
     """
     id: str
     username: str
@@ -93,68 +93,60 @@ class UserProfile(BaseModel):
             return True
         return self.region.value == target_region or self.region == Region.GLOBAL
     
-    def can_view_risk_score(self, risk_score: int) -> bool:
-        """Check if user can view transactions with given risk score (ABAC)."""
+    def can_view_risk_score(self, score: int) -> bool:
+        """Check if user can view results with given score (ABAC)."""
         if self.has_permission(Permission.VIEW_HIGH_RISK):
             return True
         # Users without VIEW_HIGH_RISK can only see scores below 70
-        return risk_score < 70
+        return score < 70
     
     def get_max_visible_risk_score(self) -> int:
-        """Returns maximum risk score this user can view."""
+        """Returns maximum score this user can view."""
         if self.has_permission(Permission.VIEW_HIGH_RISK):
             return 100
         return 69  # Can't see 70+
 
 
-# Mock users database (in production: Azure AD)
+# Mock users database (in production: Azure Entra ID)
 MOCK_USERS: dict[str, UserProfile] = {
-    "admin": UserProfile(
+    "admin_global": UserProfile(
         id="usr_001",
         username="Alice Administrator",
-        email="alice.admin@bank.com",
+        email="alice.admin@example.com",
         role=UserRole.ADMIN,
         region=Region.GLOBAL,
         clearance_level=3,
     ),
-    "senior_north": UserProfile(
+    "senior_global": UserProfile(
         id="usr_002",
-        username="Bob Senior (North)",
-        email="bob.senior@bank.com",
+        username="Bob Senior",
+        email="bob.senior@example.com",
         role=UserRole.SENIOR_OFFICER,
-        region=Region.NORTH,
+        region=Region.GLOBAL,
         clearance_level=3,
     ),
     "officer_south": UserProfile(
         id="usr_003",
         username="Carol Officer (South)",
-        email="carol.officer@bank.com",
+        email="carol.officer@example.com",
         role=UserRole.OFFICER,
         region=Region.SOUTH,
         clearance_level=2,
     ),
-    "officer_east": UserProfile(
+    "officer_north": UserProfile(
         id="usr_004",
-        username="David Officer (East)",
-        email="david.officer@bank.com",
+        username="David Officer (North)",
+        email="david.officer@example.com",
         role=UserRole.OFFICER,
-        region=Region.EAST,
+        region=Region.NORTH,
         clearance_level=2,
     ),
-    "junior_west": UserProfile(
+    "viewer_south": UserProfile(
         id="usr_005",
-        username="Eve Junior (West)",
-        email="eve.junior@bank.com",
-        role=UserRole.OFFICER,
-        region=Region.WEST,
-        clearance_level=1,
-    ),
-    "viewer": UserProfile(
-        id="usr_006",
-        username="Frank Viewer",
-        email="frank.viewer@bank.com",
+        username="Eve Viewer (South)",
+        email="eve.viewer@example.com",
         role=UserRole.VIEWER,
-        region=Region.GLOBAL,
+        region=Region.SOUTH,
         clearance_level=1,
     ),
 }
@@ -164,7 +156,7 @@ def get_current_user(user_key: str) -> Optional[UserProfile]:
     """
     Get user profile by key.
     
-    In production, this would decode and validate Azure AD token.
+    In production, this would decode and validate Azure Entra ID token.
     
     Args:
         user_key: User identifier key
@@ -200,4 +192,3 @@ def check_permission(user: UserProfile, permission: Permission) -> bool:
             f"does not have permission '{permission.value}'."
         )
     return True
-

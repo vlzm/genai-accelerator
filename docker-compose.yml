@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: kyc-app
+    container_name: genai-app
     ports:
       - "8501:8501"
     environment:
@@ -15,7 +15,7 @@ services:
       # Database connection (uses Docker network hostname)
       DATABASE_HOST: db
       DATABASE_PORT: 5432
-      DATABASE_NAME: kyc_db
+      DATABASE_NAME: app_db
       DATABASE_USER: postgres
       DATABASE_PASSWORD: localdevpassword123
       # LLM Provider (override in .env or here)
@@ -31,9 +31,6 @@ services:
       # Ollama (if using ollama provider)
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
-      # RAG / Vector Search (set to false to disable)
-      RAG_ENABLED: ${RAG_ENABLED:-true}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
     depends_on:
       db:
         condition: service_healthy
@@ -52,7 +49,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-    container_name: kyc-api
+    container_name: genai-api
     ports:
       - "8000:8000"
     environment:
@@ -61,7 +58,7 @@ services:
       # Database connection (uses Docker network hostname)
       DATABASE_HOST: db
       DATABASE_PORT: 5432
-      DATABASE_NAME: kyc_db
+      DATABASE_NAME: app_db
       DATABASE_USER: postgres
       DATABASE_PASSWORD: localdevpassword123
       # LLM Provider (override in .env or here)
@@ -77,9 +74,6 @@ services:
       # Ollama (if using ollama provider)
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
-      # RAG / Vector Search (set to false to disable)
-      RAG_ENABLED: ${RAG_ENABLED:-true}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
     depends_on:
       db:
         condition: service_healthy
@@ -92,21 +86,21 @@ services:
       retries: 3
 
   # ============================================
-  # Database (with pgvector for RAG)
+  # Database (PostgreSQL)
   # ============================================
   db:
-    image: pgvector/pgvector:pg16
-    container_name: kyc-postgres
+    image: postgres:16
+    container_name: genai-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: localdevpassword123
-      POSTGRES_DB: kyc_db
+      POSTGRES_DB: app_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d kyc_db"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app_db"]
       interval: 5s
       timeout: 5s
       retries: 5

@@ -90,7 +90,7 @@ resource "azurerm_postgresql_flexible_server" "main" {
   resource_group_name    = azurerm_resource_group.main.name
   location               = azurerm_resource_group.main.location
   version                = "16"
-  administrator_login    = "kycadmin"
+  administrator_login    = "appdbadmin"
   administrator_password = var.db_admin_password
 
   # Cheapest tier: Burstable B1ms (~$12/month)
@@ -110,17 +110,10 @@ resource "azurerm_postgresql_flexible_server_firewall_rule" "azure" {
 
 # Create database
 resource "azurerm_postgresql_flexible_server_database" "main" {
-  name      = "kyc_db"
+  name      = "app_db"
   server_id = azurerm_postgresql_flexible_server.main.id
   charset   = "UTF8"
   collation = "en_US.utf8"
-}
-
-# Enable pgvector extension
-resource "azurerm_postgresql_flexible_server_configuration" "extensions" {
-  name      = "azure.extensions"
-  server_id = azurerm_postgresql_flexible_server.main.id
-  value     = "vector"
 }
 
 # ============================================
@@ -159,7 +152,7 @@ resource "azurerm_container_app" "api" {
 
     container {
       name   = "api"
-      image  = "${azurerm_container_registry.main.login_server}/kyc-api:latest"
+      image  = "${azurerm_container_registry.main.login_server}/genai-api:latest"
       cpu    = 0.25
       memory = "0.5Gi"
 
@@ -198,10 +191,6 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "OPENAI_MODEL"
         value = var.openai_model
-      }
-      env {
-        name  = "RAG_ENABLED"
-        value = tostring(var.rag_enabled)
       }
     }
   }
@@ -253,7 +242,7 @@ resource "azurerm_container_app" "app" {
 
     container {
       name   = "app"
-      image  = "${azurerm_container_registry.main.login_server}/kyc-app:latest"
+      image  = "${azurerm_container_registry.main.login_server}/genai-app:latest"
       cpu    = 0.25
       memory = "0.5Gi"
 
@@ -293,10 +282,6 @@ resource "azurerm_container_app" "app" {
         name  = "OPENAI_MODEL"
         value = var.openai_model
       }
-      env {
-        name  = "RAG_ENABLED"
-        value = tostring(var.rag_enabled)
-      }
     }
   }
 
@@ -331,4 +316,3 @@ resource "azurerm_container_app" "app" {
     password_secret_name = "acr-password"
   }
 }
-

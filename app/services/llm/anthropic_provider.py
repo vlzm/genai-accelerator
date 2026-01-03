@@ -5,7 +5,7 @@ Alternative provider using Claude models.
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import anthropic
 from tenacity import (
@@ -24,11 +24,18 @@ class AnthropicProvider(BaseLLMProvider):
     """
     Anthropic Claude provider.
     
-    Uses Claude for transaction analysis.
+    Uses Claude for text analysis.
     Note: Claude doesn't have native JSON mode, so we enforce it via prompt.
     """
     
-    def __init__(self, api_key: str, model: str = "claude-3-5-sonnet-20241022"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "claude-3-5-sonnet-20241022",
+        system_prompt: Optional[str] = None,
+    ):
+        super().__init__(system_prompt=system_prompt)
+        
         if not api_key:
             raise ValueError("Anthropic API key not configured")
         
@@ -85,26 +92,5 @@ class AnthropicProvider(BaseLLMProvider):
             logger.error(f"Anthropic API error: {e}")
             raise
     
-    def _call_api_with_tools(
-        self,
-        messages: list[dict],
-        tools: list[dict],
-        temperature: float = 0.1,
-        max_tokens: int = 1000,
-    ) -> dict:
-        """
-        Tool calling for Anthropic.
-        
-        Note: Anthropic has its own tool format. For simplicity in this MVP,
-        we fall back to simple mode. Full implementation would convert
-        OpenAI tool format to Anthropic's format.
-        """
-        # TODO: Implement full Anthropic tool calling
-        # For now, fall back to simple mode
-        logger.warning("Anthropic tool calling not fully implemented, using simple mode")
-        content = self._call_api(messages, temperature, max_tokens)
-        return {"content": content, "tool_calls": None}
-    
     def get_model_version(self) -> str:
         return self._model_version
-

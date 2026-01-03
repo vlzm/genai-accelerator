@@ -2,7 +2,7 @@
 LLM Service - High-level interface for AI operations.
 
 This module provides a simplified interface to the LLM providers.
-It handles provider initialization and exposes the analyze_transaction method.
+It handles provider initialization and exposes the analyze method.
 
 Supports multiple providers via LLM_PROVIDER environment variable:
 - azure: Azure OpenAI (production)
@@ -20,7 +20,7 @@ from app.services.llm import BaseLLMProvider, LLMResponse, get_llm_provider
 
 class LLMService:
     """
-    High-level LLM service for KYC/AML analysis.
+    High-level LLM service for AI-powered analysis.
     
     Wraps the provider abstraction layer for easy use by business logic.
     """
@@ -40,70 +40,26 @@ class LLMService:
         """Returns the underlying LLM provider."""
         return self._provider
     
-    def analyze_transaction(
+    def analyze(
         self,
-        comment: str,
-        amount: float,
-        sender_id: str,
-        receiver_id: str,
+        input_text: str,
+        context: Optional[str] = None,
     ) -> LLMResponse:
         """
-        Analyzes a transaction for AML/KYC risk (simple mode).
+        Analyzes input text with optional context.
         
-        For production, use analyze_with_tools() instead.
-        
-        Args:
-            comment: Transaction comment text
-            amount: Transaction amount
-            sender_id: Sender identifier
-            receiver_id: Receiver identifier
-            
-        Returns:
-            Structured LLMResponse with risk assessment
-        """
-        return self._provider.analyze_transaction(
-            comment=comment,
-            amount=amount,
-            sender_id=sender_id,
-            receiver_id=receiver_id,
-        )
-    
-    def analyze_with_tools(
-        self,
-        comment: str,
-        amount: float,
-        currency: str,
-        sender_id: str,
-        receiver_id: str,
-    ) -> LLMResponse:
-        """
-        Analyzes a transaction using agent mode with tool calling.
-        
-        This is the RECOMMENDED method for production. It uses function calling
-        to ground the LLM's decisions in real data (sanctions lists, thresholds).
-        
-        The LLM will:
-        1. Check entities against sanctions lists
-        2. Validate amounts against reporting thresholds
-        3. Check for PEP status when appropriate
-        4. Synthesize a final risk assessment based on tool results
+        This is the main entry point for analysis operations.
         
         Args:
-            comment: Transaction comment text
-            amount: Transaction amount
-            currency: Currency code (USD, EUR, etc.)
-            sender_id: Sender identifier
-            receiver_id: Receiver identifier
+            input_text: Primary text to analyze
+            context: Optional additional context
             
         Returns:
-            Structured LLMResponse with risk assessment and tool usage info
+            Structured LLMResponse with analysis results
         """
-        return self._provider.analyze_with_tools(
-            comment=comment,
-            amount=amount,
-            currency=currency,
-            sender_id=sender_id,
-            receiver_id=receiver_id,
+        return self._provider.analyze(
+            input_text=input_text,
+            context=context,
         )
     
     def get_model_version(self) -> str:

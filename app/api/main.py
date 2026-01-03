@@ -1,7 +1,7 @@
 """
-FastAPI Application for KYC/AML Analyzer.
+FastAPI Application for Azure GenAI Accelerator.
 
-REST API for programmatic access to transaction analysis.
+REST API for programmatic access to AI-powered analysis.
 Designed for integration with external systems and microservices.
 
 Run with: uvicorn app.api.main:app --host 0.0.0.0 --port 8000
@@ -15,22 +15,20 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db, get_session
-from app.models import TransactionCreate
-from app.services.risk_engine import RiskEngine
+from app.models import RequestCreate
+from app.services.processor import Processor
 from app.services.auth_mock import get_current_user, UserProfile, Permission
 from app.services.secret_manager import get_settings
 from app.api.schemas import (
-    TransactionAnalyzeRequest,
+    AnalyzeRequest,
     FeedbackRequest,
-    AnalysisResponse,
-    TransactionResponse,
-    RiskReportResponse,
+    AnalyzeResponse,
+    RequestResponse,
+    AnalysisResultResponse,
     FeedbackResponse,
     FeedbackStatsResponse,
     HealthResponse,
     ErrorResponse,
-    SimilarCaseResponse,
-    SimilarCasesResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,15 +50,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="KYC/AML Analyzer API",
+    title="Azure GenAI Accelerator API",
     description="""
-## Secure KYC/AML Transaction Risk Analysis API
+## Azure GenAI Accelerator - REST API
 
-This API provides programmatic access to AI-powered AML/KYC risk analysis.
+This API provides programmatic access to AI-powered analysis.
 
 ### Features
-- **Transaction Analysis**: Submit transactions for risk assessment
-- **Risk Reports**: Retrieve and filter risk reports
+- **Analysis**: Submit data for AI analysis
+- **Results**: Retrieve and filter analysis results
 - **Human Feedback**: Submit feedback for model improvement
 - **Evaluation Metrics**: Access model quality statistics
 
@@ -70,8 +68,8 @@ This API provides programmatic access to AI-powered AML/KYC risk analysis.
 - Designed for Azure Managed Identity in production
 
 ### Observability
-- Full LLM tracing available on reports
-- Guardrail status for safety checks
+- Full LLM tracing available on results
+- Validation status for quality checks
 - Human feedback collection for model evaluation
     """,
     version=API_VERSION,
@@ -158,7 +156,7 @@ async def health_check():
 async def root():
     """API root with documentation links."""
     return {
-        "name": "KYC/AML Analyzer API",
+        "name": "Azure GenAI Accelerator API",
         "version": API_VERSION,
         "docs": "/docs",
         "redoc": "/redoc",
@@ -166,74 +164,67 @@ async def root():
     }
 
 
-# ============ Transaction Analysis Endpoints ============
+# ============ Analysis Endpoints ============
 
 @app.post(
-    "/transactions/analyze",
-    response_model=AnalysisResponse,
-    tags=["Transactions"],
-    summary="Analyze a transaction for AML/KYC risk",
+    "/analyze",
+    response_model=AnalyzeResponse,
+    tags=["Analysis"],
+    summary="Analyze input data with AI",
     responses={
-        403: {"model": ErrorResponse, "description": "User lacks ANALYZE_TRANSACTIONS permission"},
+        403: {"model": ErrorResponse, "description": "User lacks ANALYZE permission"},
     },
 )
-async def analyze_transaction(
-    request: TransactionAnalyzeRequest,
+async def analyze(
+    request: AnalyzeRequest,
     user: UserProfile = Depends(get_user_from_header),
 ):
     """
-    Submit a transaction for AI-powered risk analysis.
+    Submit input data for AI-powered analysis.
     
     The analysis includes:
-    - Sanctions list checking
-    - PEP (Politically Exposed Person) verification
-    - Amount threshold validation
-    - Risk scoring and factor identification
+    - Content processing and categorization
+    - Score assignment based on significance
+    - Summary generation
     
     **Required Permission**: ANALYZE_TRANSACTIONS
     
-    **ABAC**: Transaction will be tagged with user's region if not specified.
+    **ABAC**: Request will be tagged with user's region if not specified.
     """
     try:
         with get_session() as session:
-            engine = RiskEngine(session, user=user)
+            processor = Processor(session, user=user)
             
-            transaction_data = TransactionCreate(
-                comment=request.comment,
-                amount=request.amount,
-                currency=request.currency,
-                sender_id=request.sender_id,
-                receiver_id=request.receiver_id,
+            request_data = RequestCreate(
+                input_text=request.input_text,
+                context=request.context,
                 region=request.region,
             )
             
-            transaction, report = engine.process_transaction(transaction_data)
+            req, result = processor.process_request(request_data)
             
-            return AnalysisResponse(
-                transaction=TransactionResponse(
-                    id=transaction.id,
-                    sender_id=transaction.sender_id,
-                    receiver_id=transaction.receiver_id,
-                    amount=transaction.amount,
-                    currency=transaction.currency,
-                    comment=transaction.comment,
-                    region=transaction.region,
-                    created_at=transaction.created_at,
+            return AnalyzeResponse(
+                request=RequestResponse(
+                    id=req.id,
+                    input_text=req.input_text,
+                    context=req.context,
+                    region=req.region,
+                    created_at=req.created_at,
                 ),
-                report=RiskReportResponse(
-                    id=report.id,
-                    transaction_id=report.transaction_id,
-                    risk_score=report.risk_score,
-                    risk_level=report.risk_level,
-                    risk_factors=report.risk_factors,
-                    reasoning=report.llm_reasoning,
-                    model_version=report.model_version,
-                    region=report.region,
-                    guardrail_status=report.guardrail_status,
-                    guardrail_details=report.guardrail_details,
-                    human_feedback=report.human_feedback,
-                    created_at=report.created_at,
-                    llm_trace=report.llm_trace,
+                result=AnalysisResultResponse(
+                    id=result.id,
+                    request_id=result.request_id,
+                    score=result.score,
+                    categories=result.categories,
+                    summary=result.summary,
+                    processed_content=result.processed_content,
+                    model_version=result.model_version,
+                    region=result.region,
+                    validation_status=result.validation_status,
+                    validation_details=result.validation_details,
+                    human_feedback=result.human_feedback,
+                    created_at=result.created_at,
+                    llm_trace=result.llm_trace,
                 ),
             )
             
@@ -245,107 +236,107 @@ async def analyze_transaction(
 
 
 @app.get(
-    "/reports",
-    response_model=list[RiskReportResponse],
-    tags=["Reports"],
-    summary="Get risk reports",
+    "/results",
+    response_model=list[AnalysisResultResponse],
+    tags=["Results"],
+    summary="Get analysis results",
 )
-async def get_reports(
-    limit: int = Query(default=20, ge=1, le=100, description="Max reports to return"),
-    min_score: Optional[int] = Query(default=None, ge=0, le=100, description="Filter by minimum risk score"),
+async def get_results(
+    limit: int = Query(default=20, ge=1, le=100, description="Max results to return"),
+    min_score: Optional[int] = Query(default=None, ge=0, le=100, description="Filter by minimum score"),
     region: Optional[str] = Query(default=None, description="Filter by region"),
     include_trace: bool = Query(default=False, description="Include LLM trace in response"),
     user: UserProfile = Depends(get_user_from_header),
 ):
     """
-    Retrieve risk reports with optional filtering.
+    Retrieve analysis results with optional filtering.
     
-    **ABAC Applied**: Users only see reports from their accessible regions
+    **ABAC Applied**: Users only see results from their accessible regions
     and within their clearance level.
     
     **Required Permission**: VIEW_TRANSACTIONS
     """
     try:
         with get_session() as session:
-            engine = RiskEngine(session, user=user)
+            processor = Processor(session, user=user)
             
             if min_score is not None:
-                reports = engine.get_high_risk_transactions(min_score=min_score, limit=limit)
+                results = processor.get_high_score_results(min_score=min_score, limit=limit)
             elif region:
-                reports = engine.get_reports_by_region(region, limit=limit)
+                results = processor.get_results_by_region(region, limit=limit)
             else:
-                reports = engine.get_recent_reports(limit=limit)
+                results = processor.get_recent_results(limit=limit)
             
             return [
-                RiskReportResponse(
+                AnalysisResultResponse(
                     id=r.id,
-                    transaction_id=r.transaction_id,
-                    risk_score=r.risk_score,
-                    risk_level=r.risk_level,
-                    risk_factors=r.risk_factors,
-                    reasoning=r.llm_reasoning,
+                    request_id=r.request_id,
+                    score=r.score,
+                    categories=r.categories,
+                    summary=r.summary,
+                    processed_content=r.processed_content,
                     model_version=r.model_version,
                     region=r.region,
-                    guardrail_status=r.guardrail_status,
-                    guardrail_details=r.guardrail_details,
+                    validation_status=r.validation_status,
+                    validation_details=r.validation_details,
                     human_feedback=r.human_feedback,
                     created_at=r.created_at,
                     llm_trace=r.llm_trace if include_trace else None,
                 )
-                for r in reports
+                for r in results
             ]
             
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
-        logger.exception("Failed to fetch reports")
+        logger.exception("Failed to fetch results")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get(
-    "/reports/{report_id}",
-    response_model=RiskReportResponse,
-    tags=["Reports"],
-    summary="Get a specific report by ID",
+    "/results/{result_id}",
+    response_model=AnalysisResultResponse,
+    tags=["Results"],
+    summary="Get a specific result by ID",
 )
-async def get_report(
-    report_id: int,
+async def get_result(
+    result_id: int,
     include_trace: bool = Query(default=True, description="Include LLM trace"),
     user: UserProfile = Depends(get_user_from_header),
 ):
     """
-    Retrieve a specific risk report by ID.
+    Retrieve a specific analysis result by ID.
     
-    **ABAC Applied**: Access denied if report is outside user's region/clearance.
+    **ABAC Applied**: Access denied if result is outside user's region/clearance.
     """
     try:
         with get_session() as session:
-            engine = RiskEngine(session, user=user)
+            processor = Processor(session, user=user)
             
-            # Get all reports and find by ID (simple approach)
-            reports = engine.get_recent_reports(limit=1000)
-            report = next((r for r in reports if r.id == report_id), None)
+            # Get all results and find by ID (simple approach)
+            results = processor.get_recent_results(limit=1000)
+            result = next((r for r in results if r.id == result_id), None)
             
-            if not report:
+            if not result:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Report {report_id} not found or not accessible",
+                    detail=f"Result {result_id} not found or not accessible",
                 )
             
-            return RiskReportResponse(
-                id=report.id,
-                transaction_id=report.transaction_id,
-                risk_score=report.risk_score,
-                risk_level=report.risk_level,
-                risk_factors=report.risk_factors,
-                reasoning=report.llm_reasoning,
-                model_version=report.model_version,
-                region=report.region,
-                guardrail_status=report.guardrail_status,
-                guardrail_details=report.guardrail_details,
-                human_feedback=report.human_feedback,
-                created_at=report.created_at,
-                llm_trace=report.llm_trace if include_trace else None,
+            return AnalysisResultResponse(
+                id=result.id,
+                request_id=result.request_id,
+                score=result.score,
+                categories=result.categories,
+                summary=result.summary,
+                processed_content=result.processed_content,
+                model_version=result.model_version,
+                region=result.region,
+                validation_status=result.validation_status,
+                validation_details=result.validation_details,
+                human_feedback=result.human_feedback,
+                created_at=result.created_at,
+                llm_trace=result.llm_trace if include_trace else None,
             )
             
     except HTTPException:
@@ -353,78 +344,7 @@ async def get_report(
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
-        logger.exception("Failed to fetch report")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get(
-    "/reports/{report_id}/similar",
-    response_model=SimilarCasesResponse,
-    tags=["Reports"],
-    summary="Find similar historical cases (RAG)",
-)
-async def get_similar_cases(
-    report_id: int,
-    limit: int = Query(default=3, ge=1, le=10, description="Max similar cases"),
-    user: UserProfile = Depends(get_user_from_header),
-):
-    """
-    Find similar historical cases using RAG vector search.
-    
-    Uses pgvector for semantic similarity search to find past transactions
-    with similar patterns. Helps compliance officers make informed decisions.
-    
-    **Feature Toggle**: Set RAG_ENABLED=false to disable.
-    
-    **ABAC Applied**: Results filtered by user's accessible regions.
-    """
-    try:
-        with get_session() as session:
-            engine = RiskEngine(session, user=user)
-            
-            # Check if RAG is enabled
-            if not engine.is_rag_enabled():
-                return SimilarCasesResponse(
-                    query_report_id=report_id,
-                    similar_cases=[],
-                    rag_enabled=False,
-                    message="RAG is disabled. Set RAG_ENABLED=true to enable.",
-                )
-            
-            # Find the report
-            reports = engine.get_recent_reports(limit=1000)
-            report = next((r for r in reports if r.id == report_id), None)
-            
-            if not report:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Report {report_id} not found or not accessible",
-                )
-            
-            # Find similar cases
-            similar = engine.find_similar_cases(report, limit=limit)
-            
-            return SimilarCasesResponse(
-                query_report_id=report_id,
-                similar_cases=[
-                    SimilarCaseResponse(
-                        report_id=s.id,
-                        risk_score=s.risk_score,
-                        risk_level=s.risk_level,
-                        risk_factors=s.risk_factors,
-                        region=s.region,
-                        created_at=s.created_at,
-                    )
-                    for s in similar
-                ],
-                rag_enabled=True,
-                message=f"Found {len(similar)} similar cases",
-            )
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Failed to find similar cases")
+        logger.exception("Failed to fetch result")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -434,7 +354,7 @@ async def get_similar_cases(
     "/feedback",
     response_model=FeedbackResponse,
     tags=["Feedback"],
-    summary="Submit human feedback for a report",
+    summary="Submit human feedback for a result",
 )
 async def submit_feedback(
     request: FeedbackRequest,
@@ -448,27 +368,27 @@ async def submit_feedback(
     - Enables error analysis when model makes mistakes
     - Collects data for potential fine-tuning
     
-    **Required Permission**: VIEW_TRANSACTIONS (to access the report)
+    **Required Permission**: VIEW_TRANSACTIONS (to access the result)
     """
     try:
         with get_session() as session:
-            engine = RiskEngine(session, user=user)
+            processor = Processor(session, user=user)
             
-            report = engine.submit_feedback(
-                report_id=request.report_id,
+            result = processor.submit_feedback(
+                result_id=request.result_id,
                 feedback=request.feedback,
                 comment=request.comment,
             )
             
-            if not report:
+            if not result:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Report {request.report_id} not found or not accessible",
+                    detail=f"Result {request.result_id} not found or not accessible",
                 )
             
             feedback_type = "positive" if request.feedback else "negative"
             return FeedbackResponse(
-                report_id=request.report_id,
+                result_id=request.result_id,
                 feedback_recorded=True,
                 message=f"Feedback recorded as {feedback_type}. Thank you for improving the model!",
             )
@@ -495,14 +415,14 @@ async def get_feedback_stats(
     Returns:
     - Feedback counts (positive/negative/pending)
     - Estimated accuracy based on human verdicts
-    - Guardrail failure breakdown
+    - Validation failure breakdown
     
     **ABAC Applied**: Statistics are scoped to user's accessible data.
     """
     try:
         with get_session() as session:
-            engine = RiskEngine(session, user=user)
-            stats = engine.get_feedback_stats()
+            processor = Processor(session, user=user)
+            stats = processor.get_feedback_stats()
             
             return FeedbackStatsResponse(**stats)
             
@@ -512,48 +432,47 @@ async def get_feedback_stats(
 
 
 @app.get(
-    "/reports/needs-review",
-    response_model=list[RiskReportResponse],
+    "/results/needs-review",
+    response_model=list[AnalysisResultResponse],
     tags=["Feedback"],
-    summary="Get reports needing human review",
+    summary="Get results needing human review",
 )
-async def get_reports_needing_review(
+async def get_results_needing_review(
     limit: int = Query(default=20, ge=1, le=100),
     user: UserProfile = Depends(get_user_from_header),
 ):
     """
-    Get prioritized queue of reports needing human review.
+    Get prioritized queue of results needing human review.
     
     Priority order:
-    1. Reports with guardrail failures
-    2. High-risk reports without feedback
-    3. Recent reports without feedback
+    1. Results with validation failures
+    2. High-score results without feedback
+    3. Recent results without feedback
     """
     try:
         with get_session() as session:
-            engine = RiskEngine(session, user=user)
-            reports = engine.get_reports_needing_review(limit=limit)
+            processor = Processor(session, user=user)
+            results = processor.get_results_needing_review(limit=limit)
             
             return [
-                RiskReportResponse(
+                AnalysisResultResponse(
                     id=r.id,
-                    transaction_id=r.transaction_id,
-                    risk_score=r.risk_score,
-                    risk_level=r.risk_level,
-                    risk_factors=r.risk_factors,
-                    reasoning=r.llm_reasoning,
+                    request_id=r.request_id,
+                    score=r.score,
+                    categories=r.categories,
+                    summary=r.summary,
+                    processed_content=r.processed_content,
                     model_version=r.model_version,
                     region=r.region,
-                    guardrail_status=r.guardrail_status,
-                    guardrail_details=r.guardrail_details,
+                    validation_status=r.validation_status,
+                    validation_details=r.validation_details,
                     human_feedback=r.human_feedback,
                     created_at=r.created_at,
                     llm_trace=r.llm_trace,
                 )
-                for r in reports
+                for r in results
             ]
             
     except Exception as e:
-        logger.exception("Failed to fetch reports needing review")
+        logger.exception("Failed to fetch results needing review")
         raise HTTPException(status_code=500, detail=str(e))
-

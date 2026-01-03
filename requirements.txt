@@ -24,7 +24,3 @@ pydantic-settings>=2.1.0
 # Utilities
 python-dotenv>=1.0.0
 tenacity>=8.2.3
-
-# RAG / Vector Search (optional, disable with RAG_ENABLED=false)
-pgvector>=0.2.4
-

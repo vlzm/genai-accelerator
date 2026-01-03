@@ -1,28 +1,35 @@
 """
-Tools module for LLM Function Calling.
+Tools module - Example implementations for LLM Function Calling.
 
-Provides deterministic tools that the LLM can invoke to ground its decisions.
-This prevents hallucinations by giving the model access to real data sources.
+This module contains EXAMPLE tool definitions and implementations.
+Customize these for your specific use case.
 
-Available tools:
-- check_sanctions_list: Verifies entities against global sanctions databases
-- check_pep_status: Checks if person is a Politically Exposed Person
-- validate_amount_threshold: Checks if amount exceeds reporting thresholds
+To enable tools:
+1. Define tool schemas in definitions.py
+2. Implement tool functions
+3. Use analyze_with_tools() in the LLM provider
+
+Example use cases:
+- Database lookups
+- API calls to external services  
+- Validation against reference data
+- Calculations or transformations
 """
 
-from app.services.tools.sanctions import (
-    check_sanctions_list,
-    check_pep_status,
-)
-from app.services.tools.thresholds import validate_amount_threshold
-from app.services.tools.definitions import TOOL_DEFINITIONS, get_tool_by_name, execute_tool
+# ============================================================================
+# EXAMPLE TOOLS - COMMENTED OUT
+# ============================================================================
+# These are example tool definitions. Uncomment and customize for your needs.
+#
+# from app.services.tools.definitions import TOOL_DEFINITIONS, execute_tool
+#
+# __all__ = [
+#     "TOOL_DEFINITIONS",
+#     "execute_tool",
+# ]
 
-__all__ = [
-    "check_sanctions_list",
-    "check_pep_status",
-    "validate_amount_threshold",
-    "TOOL_DEFINITIONS",
-    "get_tool_by_name",
-    "execute_tool",
-]
-
+# Currently no tools are enabled - the accelerator runs in simple mode.
+# To add tools:
+# 1. Create tool functions in this module
+# 2. Define JSON schemas in definitions.py
+# 3. Import and use in the LLM base class analyze_with_tools method
