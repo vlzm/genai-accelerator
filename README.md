@@ -15,6 +15,87 @@ The system is designed with security and scalability in mind:
   * **Network:** Designed for VNET Injection & Private Endpoints
   * **Identity:** 100% Passwordless. Uses **Managed Identities** to fetch secrets from Key Vault
 
+### **Azure Infrastructure Diagram**
+
+```mermaid
+flowchart TB
+    subgraph Azure["☁️ Azure Subscription"]
+        subgraph RG["📦 Resource Group"]
+            subgraph VNET["🔒 VNET (10.0.0.0/16)"]
+                subgraph AppSubnet["App Subnet (10.0.1.0/24)"]
+                    CA["🐳 Container Apps<br/>─────────────<br/>Streamlit UI :8501<br/>FastAPI API :8000"]
+                end
+                subgraph DataSubnet["Data Subnet (10.0.2.0/24)"]
+                    PG["🐘 PostgreSQL<br/>Flexible Server<br/>─────────────<br/>Private Endpoint"]
+                end
+            end
+            KV["🔑 Key Vault<br/>─────────────<br/>API Keys<br/>DB Credentials"]
+            AOAI["🤖 Azure OpenAI<br/>─────────────<br/>GPT-4 / GPT-4o"]
+        end
+    end
+
+    User["👤 User"]
+
+    User -->|HTTPS| CA
+    CA -->|"🔐 Managed Identity<br/>(Get Secrets)"| KV
+    CA -->|"🔗 Private Connection<br/>(AAD Token)"| PG
+    CA -->|"🌐 API Call<br/>(Private Endpoint)"| AOAI
+
+    style VNET fill:#e1f5fe,stroke:#01579b,stroke-width:3px
+    style AppSubnet fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style DataSubnet fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style KV fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style AOAI fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style CA fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style PG fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+```
+
+### **Request Processing Flow**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant UI as 🖥️ Streamlit UI
+    participant API as ⚡ FastAPI Backend
+    participant LLM as 🤖 LLM Provider
+    participant VAL as ✅ Validator
+    participant DB as 🐘 PostgreSQL
+
+    User->>UI: Enter input text
+    UI->>API: POST /analyze
+    
+    Note over API: RBAC Check:<br/>User has ANALYZE permission?
+    
+    API->>DB: Create Request record
+    DB-->>API: request_id
+    
+    API->>LLM: Analyze input (JSON mode)
+    
+    rect rgb(240, 248, 255)
+        Note over API,LLM: 🔧 Optional: Tool/Function Calling
+        LLM-->>API: Tool call request
+        API->>API: Execute tool (lookup_database, etc.)
+        API->>LLM: Tool result
+    end
+    
+    LLM-->>API: {score, categories, reasoning}
+    
+    API->>VAL: Run validation checks
+    VAL-->>API: validation_status (PASS/FAIL)
+    
+    API->>DB: Save AnalysisResult<br/>(with LLM trace & validation)
+    DB-->>API: result_id
+    
+    API-->>UI: Return JSON response
+    UI-->>User: Display result card<br/>(color-coded by score)
+    
+    Note over User,UI: 👍/👎 Human Feedback Loop
+    User->>UI: Submit feedback
+    UI->>API: POST /feedback
+    API->>DB: Update feedback fields
+```
+
 ### **Security Features**
 
 1. **No Hardcoded Secrets:** Uses DefaultAzureCredential for automatic switching between local env vars (dev) and Managed Identity (cloud)
