@@ -49,8 +49,8 @@ Zero Trust principle - no passwords or API keys in codebase.
 
 ### **4.3 Access Control**
 
-* **RBAC:** Role-based permissions (Admin, Senior, Officer, Viewer)
-* **ABAC:** Attribute-based filtering (Region, Clearance Level)
+* **RBAC:** Role-based permissions (Admin, Senior Analyst, Analyst, Viewer)
+* **ABAC:** Attribute-based filtering (Region)
 
 ## **5. Project Structure**
 

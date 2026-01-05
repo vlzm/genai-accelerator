@@ -97,8 +97,8 @@ app.add_middleware(
 
 def get_user_from_header(
     x_user_key: str = Header(
-        default="officer_south",
-        description="Mock user key for RBAC/ABAC (e.g., admin_global, officer_south)",
+        default="analyst_south",
+        description="Mock user key for RBAC/ABAC (e.g., admin_global, analyst_south)",
     )
 ) -> UserProfile:
     """
@@ -112,7 +112,7 @@ def get_user_from_header(
     except KeyError:
         raise HTTPException(
             status_code=401,
-            detail=f"Unknown user key: {x_user_key}. Use one of: admin_global, senior_global, officer_south, officer_north, viewer_south",
+            detail=f"Unknown user key: {x_user_key}. Use one of: admin_global, senior_global, analyst_south, analyst_north, viewer_south",
         )
 
 
@@ -187,7 +187,7 @@ async def analyze(
     - Score assignment based on significance
     - Summary generation
     
-    **Required Permission**: ANALYZE_TRANSACTIONS
+    **Required Permission**: ANALYZE
     
     **ABAC**: Request will be tagged with user's region if not specified.
     """
@@ -252,9 +252,9 @@ async def get_results(
     Retrieve analysis results with optional filtering.
     
     **ABAC Applied**: Users only see results from their accessible regions
-    and within their clearance level.
+    and within their permission level.
     
-    **Required Permission**: VIEW_TRANSACTIONS
+    **Required Permission**: VIEW
     """
     try:
         with get_session() as session:
@@ -307,7 +307,7 @@ async def get_result(
     """
     Retrieve a specific analysis result by ID.
     
-    **ABAC Applied**: Access denied if result is outside user's region/clearance.
+    **ABAC Applied**: Access denied if result is outside user's region or permission level.
     """
     try:
         with get_session() as session:
@@ -368,7 +368,7 @@ async def submit_feedback(
     - Enables error analysis when model makes mistakes
     - Collects data for potential fine-tuning
     
-    **Required Permission**: VIEW_TRANSACTIONS (to access the result)
+    **Required Permission**: VIEW (to access the result)
     """
     try:
         with get_session() as session:

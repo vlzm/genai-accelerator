@@ -1,9 +1,8 @@
 """
-FastAPI REST API for KYC/AML Analyzer.
+FastAPI REST API for Azure GenAI Accelerator.
 
 Provides programmatic access to:
-- Transaction analysis
-- Risk reports
+- AI-powered analysis
+- Analysis results
 - Human feedback submission
 """
-

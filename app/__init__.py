@@ -1,2 +1,1 @@
-# Secure KYC/AML Analyzer Application
-
+# Azure GenAI Accelerator Application

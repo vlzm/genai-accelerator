@@ -262,8 +262,8 @@ docker push <registry>.azurecr.io/genai-api:v1
 | Role | Can Analyze | High Score Access | All Regions |
 |------|-------------|-------------------|-------------|
 | Admin | ✅ | ✅ | ✅ |
-| Senior Officer | ✅ | ✅ | ✅ |
-| Officer | ✅ | ✅ | Own region |
+| Senior Analyst | ✅ | ✅ | ✅ |
+| Analyst | ✅ | ✅ | Own region |
 | Viewer | ❌ | ❌ | Own region |
 
 ### Demo Users (Mock Identity)
@@ -271,8 +271,8 @@ docker push <registry>.azurecr.io/genai-api:v1
 Use the Identity Simulator in the sidebar to switch between:
 - `admin_global` - Full access
 - `senior_global` - Full access
-- `officer_south` - South region only
-- `officer_north` - North region only
+- `analyst_south` - South region only
+- `analyst_north` - North region only
 - `viewer_south` - View only, South region
 
 ## **📝 License**

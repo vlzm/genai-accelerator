@@ -10,7 +10,7 @@ Orchestrates the request processing workflow:
 
 Implements RBAC/ABAC access control:
 - RBAC: Role-based permission checks
-- ABAC: Region and clearance level filtering
+- ABAC: Region-based filtering
 
 Implements Observability & Human Feedback Loop:
 - LLM Tracing: Full trace of input, tool calls, and output
@@ -53,7 +53,7 @@ class Processor:
     to analysis result generation and storage.
     
     All methods that access data enforce ABAC policies based on
-    the current user's region and clearance level.
+    the current user's region and permissions.
     """
     
     def __init__(self, session: Session, user: Optional[UserProfile] = None):
@@ -71,12 +71,12 @@ class Processor:
     def _check_analyze_permission(self) -> None:
         """Verify user can analyze requests (RBAC)."""
         if self.user:
-            check_permission(self.user, Permission.ANALYZE_TRANSACTIONS)
+            check_permission(self.user, Permission.ANALYZE)
     
     def _check_view_permission(self) -> None:
         """Verify user can view requests (RBAC)."""
         if self.user:
-            check_permission(self.user, Permission.VIEW_TRANSACTIONS)
+            check_permission(self.user, Permission.VIEW)
     
     def create_request(
         self,
@@ -224,7 +224,7 @@ class Processor:
         
         Filters:
         1. Region: Users only see their region (unless VIEW_ALL_REGIONS)
-        2. Score: Users without VIEW_HIGH_RISK can't see high scores
+        2. Score: Users without VIEW_SENSITIVE can't see high scores
         """
         if not self.user:
             return statement
@@ -236,9 +236,9 @@ class Processor:
             if self.user.region != Region.GLOBAL:
                 conditions.append(AnalysisResult.region == self.user.region.value)
         
-        # Score filter (ABAC based on clearance)
-        if not self.user.has_permission(Permission.VIEW_HIGH_RISK):
-            max_score = self.user.get_max_visible_risk_score()
+        # Score filter (ABAC based on permissions)
+        if not self.user.has_permission(Permission.VIEW_SENSITIVE):
+            max_score = self.user.get_max_visible_score()
             conditions.append(AnalysisResult.score <= max_score)
         
         if conditions:
@@ -281,7 +281,7 @@ class Processor:
         """
         Retrieves recent analysis results for dashboard display.
         
-        ABAC: Filters by user's region and clearance level.
+        ABAC: Filters by user's region and permissions.
         
         Args:
             limit: Maximum number of results to return
@@ -310,7 +310,7 @@ class Processor:
         """
         Retrieves high-score results for review.
         
-        ABAC: Filters by user's region. Requires VIEW_HIGH_RISK for scores >= 70.
+        ABAC: Filters by user's region. Requires VIEW_SENSITIVE for scores >= 70.
         
         Args:
             min_score: Minimum score threshold
@@ -321,11 +321,11 @@ class Processor:
         """
         self._check_view_permission()
         
-        # Adjust min_score based on user's clearance
+        # Adjust min_score based on user's permissions
         effective_min_score = min_score
-        if self.user and not self.user.has_permission(Permission.VIEW_HIGH_RISK):
-            # Users without VIEW_HIGH_RISK can only see up to score 69
-            max_allowed = self.user.get_max_visible_risk_score()
+        if self.user and not self.user.has_permission(Permission.VIEW_SENSITIVE):
+            # Users without VIEW_SENSITIVE can only see up to score 69
+            max_allowed = self.user.get_max_visible_score()
             if min_score > max_allowed:
                 # They can't see any high-score results
                 return []
@@ -574,4 +574,3 @@ class Processor:
 def get_processor(session: Session, user: Optional[UserProfile] = None) -> Processor:
     """Factory function for Processor with dependency injection."""
     return Processor(session, user)
-

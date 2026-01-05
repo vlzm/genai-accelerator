@@ -15,7 +15,6 @@ Run with: streamlit run app/main.py
 """
 
 import streamlit as st
-from decimal import Decimal, InvalidOperation
 
 from app.database import init_db, get_session
 from app.models import RequestCreate
@@ -78,8 +77,8 @@ st.markdown("""
         margin-bottom: 0.5rem;
     }
     .role-admin { background-color: #6f42c1; color: white; }
-    .role-senior_officer { background-color: #007bff; color: white; }
-    .role-officer { background-color: #28a745; color: white; }
+    .role-senior_analyst { background-color: #007bff; color: white; }
+    .role-analyst { background-color: #28a745; color: white; }
     .role-viewer { background-color: #6c757d; color: white; }
 </style>
 """, unsafe_allow_html=True)
@@ -113,8 +112,8 @@ def get_role_color(role: str) -> str:
     """Returns color for user role."""
     colors = {
         "admin": "#6f42c1",
-        "senior_officer": "#007bff",
-        "officer": "#28a745",
+        "senior_analyst": "#007bff",
+        "analyst": "#28a745",
         "viewer": "#6c757d",
     }
     return colors.get(role, "#6c757d")
@@ -187,9 +186,9 @@ def init_session_state():
             st.error(f"Failed to initialize database: {e}")
             st.session_state.db_initialized = False
     
-    # Initialize selected user (default to officer_south for demo)
+    # Initialize selected user (default to analyst_south for demo)
     if "selected_user_key" not in st.session_state:
-        st.session_state.selected_user_key = "officer_south"
+        st.session_state.selected_user_key = "analyst_south"
 
 
 def get_current_user_from_session() -> UserProfile:
@@ -234,7 +233,6 @@ def render_identity_simulator():
             "username": current_user.username,
             "role": current_user.role.value,
             "region": current_user.region.value,
-            "clearance_level": current_user.clearance_level,
             "permissions": [p.value for p in Permission if current_user.has_permission(p)],
         })
     
@@ -245,12 +243,12 @@ def render_identity_simulator():
     else:
         st.sidebar.info(f"📍 {current_user.region.value} only")
     
-    if current_user.has_permission(Permission.ANALYZE_TRANSACTIONS):
+    if current_user.has_permission(Permission.ANALYZE):
         st.sidebar.success("✅ Can Analyze")
     else:
         st.sidebar.warning("🚫 View Only")
     
-    if current_user.has_permission(Permission.VIEW_HIGH_RISK):
+    if current_user.has_permission(Permission.VIEW_SENSITIVE):
         st.sidebar.success("🔴 High Score Visible")
     else:
         st.sidebar.warning("🟡 Limited to <70 score")
@@ -281,13 +279,13 @@ def render_new_analysis(current_user: UserProfile):
     st.header("📝 AI-Powered Analysis")
     
     # RBAC check: Can user analyze?
-    if not current_user.has_permission(Permission.ANALYZE_TRANSACTIONS):
+    if not current_user.has_permission(Permission.ANALYZE):
         st.error(
             f"🚫 **Access Denied**\n\n"
             f"Your role ({current_user.role.value}) does not have permission to analyze.\n"
             f"Please contact an administrator to upgrade your access."
         )
-        st.info("💡 Try switching to 'Carol Officer' or 'Alice Administrator' in the Identity Simulator.")
+        st.info("💡 Try switching to 'Carol Analyst' or 'Alice Administrator' in the Identity Simulator.")
         return
     
     st.markdown("Submit input data for AI-powered analysis.")
@@ -295,8 +293,7 @@ def render_new_analysis(current_user: UserProfile):
     # Show user context
     st.info(
         f"📍 Logged in as **{current_user.username}** | "
-        f"Region: **{current_user.region.value}** | "
-        f"Clearance: **Level {current_user.clearance_level}**"
+        f"Region: **{current_user.region.value}**"
     )
     
     with st.form("analysis_form"):
@@ -426,7 +423,7 @@ def render_dashboard(current_user: UserProfile):
         st.info(
             f"📍 Viewing as **{current_user.username}** | "
             f"Region: **{'All' if current_user.has_permission(Permission.VIEW_ALL_REGIONS) else current_user.region.value}** | "
-            f"Max Score Visible: **{current_user.get_max_visible_risk_score()}**"
+            f"Max Score Visible: **{current_user.get_max_visible_score()}**"
         )
     
     try:
@@ -485,7 +482,7 @@ def render_dashboard(current_user: UserProfile):
                     "No results visible with your current access level.\n\n"
                     "This could mean:\n"
                     "- No results exist in your region\n"
-                    "- All results exceed your clearance level\n\n"
+                    "- All results exceed your access level\n\n"
                     "💡 Try switching to a user with higher access in the Identity Simulator."
                 )
             
@@ -681,7 +678,7 @@ def render_about(current_user: UserProfile):
     - 🎫 **Managed Identity**: Uses Azure Entra ID for authentication
     - 🔒 **Key Vault Integration**: Secrets stored securely
     - 👤 **RBAC**: Role-based access control for actions
-    - 📍 **ABAC**: Attribute-based filtering by region and clearance
+    - 📍 **ABAC**: Attribute-based filtering by region
     
     ## Observability & Evaluation
     
@@ -706,8 +703,8 @@ def render_about(current_user: UserProfile):
     | Role | Can Analyze | See High Score | All Regions |
     |------|-------------|----------------|-------------|
     | Admin | ✅ | ✅ | ✅ |
-    | Senior Officer | ✅ | ✅ | ✅ |
-    | Officer | ✅ | ✅ | ❌ (own region) |
+    | Senior Analyst | ✅ | ✅ | ✅ |
+    | Analyst | ✅ | ✅ | ❌ (own region) |
     | Viewer | ❌ | ❌ | ❌ (own region) |
     
     ## Score Levels
