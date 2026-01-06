@@ -1,35 +1,32 @@
 """
-Tools module - Example implementations for LLM Function Calling.
+Tools module for LLM Function Calling (Agent Mode).
 
-This module contains EXAMPLE tool definitions and implementations.
-Customize these for your specific use case.
+This module provides the infrastructure for tool-based analysis.
+By default, no tools are enabled (TOOL_DEFINITIONS is empty).
 
-To enable tools:
-1. Define tool schemas in definitions.py
-2. Implement tool functions
-3. Use analyze_with_tools() in the LLM provider
+To enable tools for your use case:
+1. Edit definitions.py
+2. Uncomment/create your tool definitions
+3. Set TOOL_DEFINITIONS to your tool list
+4. Use analyze_with_tools() instead of analyze()
 
 Example use cases:
-- Database lookups
-- API calls to external services  
+- Database lookups for entity verification
+- API calls to external services
 - Validation against reference data
 - Calculations or transformations
 """
 
-# ============================================================================
-# EXAMPLE TOOLS - COMMENTED OUT
-# ============================================================================
-# These are example tool definitions. Uncomment and customize for your needs.
-#
-# from app.services.tools.definitions import TOOL_DEFINITIONS, execute_tool
-#
-# __all__ = [
-#     "TOOL_DEFINITIONS",
-#     "execute_tool",
-# ]
+from app.services.tools.definitions import (
+    TOOL_DEFINITIONS,
+    TOOL_FUNCTIONS,
+    execute_tool,
+    get_tool_by_name,
+)
 
-# Currently no tools are enabled - the accelerator runs in simple mode.
-# To add tools:
-# 1. Create tool functions in this module
-# 2. Define JSON schemas in definitions.py
-# 3. Import and use in the LLM base class analyze_with_tools method
+__all__ = [
+    "TOOL_DEFINITIONS",
+    "TOOL_FUNCTIONS", 
+    "execute_tool",
+    "get_tool_by_name",
+]

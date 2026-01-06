@@ -88,5 +88,56 @@ class AzureOpenAIProvider(BaseLLMProvider):
             logger.error(f"Azure OpenAI API error: {e}")
             raise
     
+    @retry(
+        retry=retry_if_exception_type(RateLimitError),
+        wait=wait_exponential(multiplier=1, min=4, max=60),
+        stop=stop_after_attempt(3),
+    )
+    def _call_api_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        temperature: float = 0.1,
+        max_tokens: int = 1000,
+    ) -> dict:
+        """API call with tool/function calling support."""
+        try:
+            kwargs = {
+                "model": self.deployment_name,
+                "messages": messages,
+                "temperature": temperature,
+                "max_completion_tokens": max_tokens,
+            }
+            
+            if tools:
+                kwargs["tools"] = tools
+                kwargs["tool_choice"] = "auto"
+            
+            response = self.client.chat.completions.create(**kwargs)
+            message = response.choices[0].message
+            
+            result = {"content": message.content, "tool_calls": None}
+            
+            if message.tool_calls:
+                result["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        }
+                    }
+                    for tc in message.tool_calls
+                ]
+            
+            return result
+            
+        except RateLimitError:
+            logger.warning("Azure OpenAI rate limit hit, will retry...")
+            raise
+        except APIError as e:
+            logger.error(f"Azure OpenAI API error: {e}")
+            raise
+    
     def get_model_version(self) -> str:
         return self._model_version

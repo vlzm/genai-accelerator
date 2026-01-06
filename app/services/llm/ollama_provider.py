@@ -8,6 +8,7 @@ Install: https://ollama.ai
 Run model: ollama run llama3.2
 """
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -119,6 +120,59 @@ class OllamaProvider(BaseLLMProvider):
                     raise ValueError("Empty response from Ollama")
                 
                 return content
+                
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Ollama HTTP error: {e}")
+            raise
+        except httpx.HTTPError as e:
+            logger.error(f"Ollama connection error: {e}")
+            raise
+    
+    @retry(
+        retry=retry_if_exception_type(httpx.HTTPStatusError),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(3),
+    )
+    def _call_api_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        temperature: float = 0.1,
+        max_tokens: int = 1000,
+    ) -> dict:
+        """API call with tool/function calling support (uses Ollama chat endpoint)."""
+        try:
+            with httpx.Client(timeout=120.0) as client:
+                request_body = {
+                    "model": self.model,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {"temperature": temperature, "num_predict": max_tokens},
+                }
+                if tools:
+                    request_body["tools"] = tools
+                
+                response = client.post(f"{self.base_url}/api/chat", json=request_body)
+                response.raise_for_status()
+                
+                result_data = response.json()
+                message = result_data.get("message", {})
+                
+                result = {"content": message.get("content"), "tool_calls": None}
+                
+                if message.get("tool_calls"):
+                    result["tool_calls"] = [
+                        {
+                            "id": f"call_{i}",
+                            "function": {
+                                "name": tc.get("function", {}).get("name", ""),
+                                "arguments": json.dumps(tc.get("function", {}).get("arguments", {})),
+                            }
+                        }
+                        for i, tc in enumerate(message["tool_calls"])
+                    ]
+                
+                return result
                 
         except httpx.HTTPStatusError as e:
             logger.error(f"Ollama HTTP error: {e}")
