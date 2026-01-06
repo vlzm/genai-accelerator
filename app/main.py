@@ -24,7 +24,7 @@ from app.services.auth_mock import (
     get_current_user,
     UserProfile,
     Permission,
-    Region,
+    Group,
 )
 
 
@@ -186,9 +186,9 @@ def init_session_state():
             st.error(f"Failed to initialize database: {e}")
             st.session_state.db_initialized = False
     
-    # Initialize selected user (default to analyst_south for demo)
+    # Initialize selected user (default to analyst_a for demo)
     if "selected_user_key" not in st.session_state:
-        st.session_state.selected_user_key = "analyst_south"
+        st.session_state.selected_user_key = "analyst_a"
 
 
 def get_current_user_from_session() -> UserProfile:
@@ -232,16 +232,16 @@ def render_identity_simulator():
             "id": current_user.id,
             "username": current_user.username,
             "role": current_user.role.value,
-            "region": current_user.region.value,
+            "group": current_user.group.value,
             "permissions": [p.value for p in Permission if current_user.has_permission(p)],
         })
     
     # Show access summary
     st.sidebar.markdown("**Access Level:**")
-    if current_user.has_permission(Permission.VIEW_ALL_REGIONS):
-        st.sidebar.success("🌍 All Regions")
+    if current_user.has_permission(Permission.VIEW_ALL_GROUPS):
+        st.sidebar.success("🌍 All Groups")
     else:
-        st.sidebar.info(f"📍 {current_user.region.value} only")
+        st.sidebar.info(f"📍 {current_user.group.value} only")
     
     if current_user.has_permission(Permission.ANALYZE):
         st.sidebar.success("✅ Can Analyze")
@@ -293,17 +293,17 @@ def render_new_analysis(current_user: UserProfile):
     # Show user context
     st.info(
         f"📍 Logged in as **{current_user.username}** | "
-        f"Region: **{current_user.region.value}**"
+        f"Group: **{current_user.group.value}**"
     )
     
     with st.form("analysis_form"):
-        # Region selector (ABAC)
-        if current_user.has_permission(Permission.VIEW_ALL_REGIONS):
-            region_options = [r.value for r in Region]
-            region = st.selectbox("Region", region_options, index=0)
+        # Group selector (ABAC)
+        if current_user.has_permission(Permission.VIEW_ALL_GROUPS):
+            group_options = [g.value for g in Group]
+            group = st.selectbox("Group", group_options, index=0)
         else:
-            region = current_user.region.value
-            st.text_input("Region", value=region, disabled=True)
+            group = current_user.group.value
+            st.text_input("Group", value=group, disabled=True)
         
         input_text = st.text_area(
             "Input Data",
@@ -337,7 +337,7 @@ def render_new_analysis(current_user: UserProfile):
                     request_data = RequestCreate(
                         input_text=input_text.strip(),
                         context=context.strip() if context else None,
-                        region=region,
+                        group=group,
                     )
                     
                     request, result = processor.process_request(request_data)
@@ -390,7 +390,7 @@ def render_new_analysis(current_user: UserProfile):
                 with st.expander("📄 Request Details"):
                     st.json({
                         "request_id": request.id,
-                        "region": request.region,
+                        "group": request.group,
                         "created_by": current_user.username,
                         "created_at": request.created_at.isoformat(),
                     })
@@ -422,7 +422,7 @@ def render_dashboard(current_user: UserProfile):
     with col1:
         st.info(
             f"📍 Viewing as **{current_user.username}** | "
-            f"Region: **{'All' if current_user.has_permission(Permission.VIEW_ALL_REGIONS) else current_user.region.value}** | "
+            f"Group: **{'All' if current_user.has_permission(Permission.VIEW_ALL_GROUPS) else current_user.group.value}** | "
             f"Max Score Visible: **{current_user.get_max_visible_score()}**"
         )
     
@@ -445,9 +445,9 @@ def render_dashboard(current_user: UserProfile):
             with col4:
                 st.metric("📈 Avg Score", f"{stats['average_score']:.1f}")
             
-            # Show which regions are visible
-            if stats["regions_visible"]:
-                st.caption(f"Regions visible: {', '.join(stats['regions_visible'])}")
+            # Show which groups are visible
+            if stats["groups_visible"]:
+                st.caption(f"Groups visible: {', '.join(stats['groups_visible'])}")
             
             st.markdown("---")
             
@@ -462,14 +462,14 @@ def render_dashboard(current_user: UserProfile):
                     score_level = get_score_level(result.score)
                     with st.expander(
                         f"Result #{result.id} | Score: {result.score} | "
-                        f"{score_level} | Region: {result.region}",
+                        f"{score_level} | Group: {result.group}",
                         expanded=False,
                     ):
                         col1, col2 = st.columns([1, 3])
                         with col1:
                             st.metric("Score", result.score)
                             st.write(f"**Level:** {score_level}")
-                            st.write(f"**Region:** {result.region}")
+                            st.write(f"**Group:** {result.group}")
                             st.write(f"**Date:** {result.created_at.strftime('%Y-%m-%d %H:%M')}")
                         with col2:
                             st.write("**Categories:**")
@@ -481,17 +481,17 @@ def render_dashboard(current_user: UserProfile):
                 st.info(
                     "No results visible with your current access level.\n\n"
                     "This could mean:\n"
-                    "- No results exist in your region\n"
+                    "- No results exist in your group\n"
                     "- All results exceed your access level\n\n"
                     "💡 Try switching to a user with higher access in the Identity Simulator."
                 )
             
             # ABAC demo: show what's hidden
-            if not current_user.has_permission(Permission.VIEW_ALL_REGIONS):
+            if not current_user.has_permission(Permission.VIEW_ALL_GROUPS):
                 st.markdown("---")
                 st.caption(
-                    f"🔒 You are only seeing results from the **{current_user.region.value}** region. "
-                    f"Switch to 'Alice Admin' or 'Bob Senior' to see all regions."
+                    f"🔒 You are only seeing results from the **{current_user.group.value}** group. "
+                    f"Switch to 'Alice Admin' or 'Bob Senior' to see all groups."
                 )
                 
     except Exception as e:
@@ -629,7 +629,7 @@ def render_evaluation(current_user: UserProfile):
                         with col1:
                             st.metric("Score", result.score)
                             st.write(f"**Level:** {score_level}")
-                            st.write(f"**Region:** {result.region}")
+                            st.write(f"**Group:** {result.group}")
                             st.write(f"**Validation:** {result.validation_status}")
                             
                             if result.validation_details:
@@ -678,7 +678,7 @@ def render_about(current_user: UserProfile):
     - 🎫 **Managed Identity**: Uses Azure Entra ID for authentication
     - 🔒 **Key Vault Integration**: Secrets stored securely
     - 👤 **RBAC**: Role-based access control for actions
-    - 📍 **ABAC**: Attribute-based filtering by region
+    - 📍 **ABAC**: Attribute-based filtering by group
     
     ## Observability & Evaluation
     
@@ -700,12 +700,12 @@ def render_about(current_user: UserProfile):
     
     ## Access Control Model
     
-    | Role | Can Analyze | See High Score | All Regions |
-    |------|-------------|----------------|-------------|
+    | Role | Can Analyze | See High Score | All Groups |
+    |------|-------------|----------------|------------|
     | Admin | ✅ | ✅ | ✅ |
     | Senior Analyst | ✅ | ✅ | ✅ |
-    | Analyst | ✅ | ✅ | ❌ (own region) |
-    | Viewer | ❌ | ❌ | ❌ (own region) |
+    | Analyst | ✅ | ✅ | ❌ (own group) |
+    | Viewer | ❌ | ❌ | ❌ (own group) |
     
     ## Score Levels
     

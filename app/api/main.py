@@ -97,8 +97,8 @@ app.add_middleware(
 
 def get_user_from_header(
     x_user_key: str = Header(
-        default="analyst_south",
-        description="Mock user key for RBAC/ABAC (e.g., admin_global, analyst_south)",
+        default="analyst_a",
+        description="Mock user key for RBAC/ABAC (e.g., admin_default, analyst_a)",
     )
 ) -> UserProfile:
     """
@@ -112,7 +112,7 @@ def get_user_from_header(
     except KeyError:
         raise HTTPException(
             status_code=401,
-            detail=f"Unknown user key: {x_user_key}. Use one of: admin_global, senior_global, analyst_south, analyst_north, viewer_south",
+            detail=f"Unknown user key: {x_user_key}. Use one of: admin_default, senior_default, analyst_a, analyst_b, viewer_a",
         )
 
 
@@ -189,7 +189,7 @@ async def analyze(
     
     **Required Permission**: ANALYZE
     
-    **ABAC**: Request will be tagged with user's region if not specified.
+    **ABAC**: Request will be tagged with user's group if not specified.
     """
     try:
         with get_session() as session:
@@ -198,7 +198,7 @@ async def analyze(
             request_data = RequestCreate(
                 input_text=request.input_text,
                 context=request.context,
-                region=request.region,
+                group=request.group,
             )
             
             req, result = processor.process_request(request_data)
@@ -208,7 +208,7 @@ async def analyze(
                     id=req.id,
                     input_text=req.input_text,
                     context=req.context,
-                    region=req.region,
+                    group=req.group,
                     created_at=req.created_at,
                 ),
                 result=AnalysisResultResponse(
@@ -219,7 +219,7 @@ async def analyze(
                     summary=result.summary,
                     processed_content=result.processed_content,
                     model_version=result.model_version,
-                    region=result.region,
+                    group=result.group,
                     validation_status=result.validation_status,
                     validation_details=result.validation_details,
                     human_feedback=result.human_feedback,
@@ -244,14 +244,14 @@ async def analyze(
 async def get_results(
     limit: int = Query(default=20, ge=1, le=100, description="Max results to return"),
     min_score: Optional[int] = Query(default=None, ge=0, le=100, description="Filter by minimum score"),
-    region: Optional[str] = Query(default=None, description="Filter by region"),
+    group: Optional[str] = Query(default=None, description="Filter by group"),
     include_trace: bool = Query(default=False, description="Include LLM trace in response"),
     user: UserProfile = Depends(get_user_from_header),
 ):
     """
     Retrieve analysis results with optional filtering.
     
-    **ABAC Applied**: Users only see results from their accessible regions
+    **ABAC Applied**: Users only see results from their accessible groups
     and within their permission level.
     
     **Required Permission**: VIEW
@@ -262,8 +262,8 @@ async def get_results(
             
             if min_score is not None:
                 results = processor.get_high_score_results(min_score=min_score, limit=limit)
-            elif region:
-                results = processor.get_results_by_region(region, limit=limit)
+            elif group:
+                results = processor.get_results_by_group(group, limit=limit)
             else:
                 results = processor.get_recent_results(limit=limit)
             
@@ -276,7 +276,7 @@ async def get_results(
                     summary=r.summary,
                     processed_content=r.processed_content,
                     model_version=r.model_version,
-                    region=r.region,
+                    group=r.group,
                     validation_status=r.validation_status,
                     validation_details=r.validation_details,
                     human_feedback=r.human_feedback,
@@ -307,7 +307,7 @@ async def get_result(
     """
     Retrieve a specific analysis result by ID.
     
-    **ABAC Applied**: Access denied if result is outside user's region or permission level.
+    **ABAC Applied**: Access denied if result is outside user's group or permission level.
     """
     try:
         with get_session() as session:
@@ -331,7 +331,7 @@ async def get_result(
                 summary=result.summary,
                 processed_content=result.processed_content,
                 model_version=result.model_version,
-                region=result.region,
+                group=result.group,
                 validation_status=result.validation_status,
                 validation_details=result.validation_details,
                 human_feedback=result.human_feedback,
@@ -463,7 +463,7 @@ async def get_results_needing_review(
                     summary=r.summary,
                     processed_content=r.processed_content,
                     model_version=r.model_version,
-                    region=r.region,
+                    group=r.group,
                     validation_status=r.validation_status,
                     validation_details=r.validation_details,
                     human_feedback=r.human_feedback,

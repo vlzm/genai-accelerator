@@ -26,7 +26,7 @@ class Request(SQLModel, table=True):
     context: Optional[str] = Field(default=None, max_length=2000, description="Additional context")
     
     # ABAC fields for access control
-    region: str = Field(default="Global", max_length=20, description="Geographic region for ABAC")
+    group: str = Field(default="default", max_length=50, description="Group for ABAC filtering")
     created_by_user_id: Optional[str] = Field(default=None, max_length=50, description="User who created this request")
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -57,7 +57,7 @@ class AnalysisResult(SQLModel, table=True):
     model_version: str = Field(max_length=50, description="Model used for analysis")
     
     # ABAC fields for access control (denormalized for query performance)
-    region: str = Field(default="Global", max_length=20, description="Region (copied from request)")
+    group: str = Field(default="default", max_length=50, description="Group (copied from request)")
     analyzed_by_user_id: Optional[str] = Field(default=None, max_length=50, description="User who triggered analysis")
     
     # OBSERVABILITY FIELDS - LLM Tracing
@@ -85,7 +85,7 @@ class RequestCreate(SQLModel):
     """Input model for creating a new request."""
     input_text: str = Field(max_length=5000)
     context: Optional[str] = Field(default=None, max_length=2000)
-    region: str = Field(default="Global", max_length=20)
+    group: str = Field(default="default", max_length=50)
 
 
 class AnalysisOutput(SQLModel):

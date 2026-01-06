@@ -6,7 +6,7 @@ This module simulates user authentication and authorization for demo purposes.
 
 Implements:
 - RBAC (Role-Based Access Control): admin, senior_analyst, analyst, viewer
-- ABAC (Attribute-Based Access Control): region
+- ABAC (Attribute-Based Access Control): group-based data isolation
 """
 
 from enum import Enum
@@ -23,13 +23,23 @@ class UserRole(str, Enum):
     VIEWER = "viewer"
 
 
-class Region(str, Enum):
-    """Geographic regions for ABAC."""
-    GLOBAL = "Global"
-    NORTH = "North"
-    SOUTH = "South"
-    EAST = "East"
-    WEST = "West"
+class Group(str, Enum):
+    """
+    Groups for ABAC (Attribute-Based Access Control).
+    
+    Groups can represent any organizational unit:
+    - Departments (HR, Finance, Engineering)
+    - Teams (Team Alpha, Team Beta)
+    - Regions (EMEA, APAC, Americas)
+    - Projects (Project X, Project Y)
+    - Access levels (Public, Internal, Confidential)
+    
+    Rename values as needed for your use case.
+    """
+    DEFAULT = "default"
+    GROUP_A = "group_a"
+    GROUP_B = "group_b"
+    RESTRICTED = "restricted"
 
 
 class Permission(str, Enum):
@@ -37,7 +47,7 @@ class Permission(str, Enum):
     VIEW = "view"
     ANALYZE = "analyze"
     VIEW_SENSITIVE = "view_sensitive"
-    VIEW_ALL_REGIONS = "view_all_regions"
+    VIEW_ALL_GROUPS = "view_all_groups"
     MANAGE_USERS = "manage_users"
     EXPORT_DATA = "export_data"
 
@@ -48,7 +58,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.VIEW,
         Permission.ANALYZE,
         Permission.VIEW_SENSITIVE,
-        Permission.VIEW_ALL_REGIONS,
+        Permission.VIEW_ALL_GROUPS,
         Permission.MANAGE_USERS,
         Permission.EXPORT_DATA,
     },
@@ -56,7 +66,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.VIEW,
         Permission.ANALYZE,
         Permission.VIEW_SENSITIVE,
-        Permission.VIEW_ALL_REGIONS,
+        Permission.VIEW_ALL_GROUPS,
         Permission.EXPORT_DATA,
     },
     UserRole.ANALYST: {
@@ -80,17 +90,17 @@ class UserProfile(BaseModel):
     username: str
     email: str
     role: UserRole
-    region: Region
+    group: Group
     
     def has_permission(self, permission: Permission) -> bool:
         """Check if user has a specific permission (RBAC)."""
         return permission in ROLE_PERMISSIONS.get(self.role, set())
     
-    def can_access_region(self, target_region: str) -> bool:
-        """Check if user can access data from a specific region (ABAC)."""
-        if self.has_permission(Permission.VIEW_ALL_REGIONS):
+    def can_access_group(self, target_group: str) -> bool:
+        """Check if user can access data from a specific group (ABAC)."""
+        if self.has_permission(Permission.VIEW_ALL_GROUPS):
             return True
-        return self.region.value == target_region or self.region == Region.GLOBAL
+        return self.group.value == target_group or self.group == Group.DEFAULT
     
     def can_view_score(self, score: int) -> bool:
         """Check if user can view results with given score (ABAC)."""
@@ -108,40 +118,40 @@ class UserProfile(BaseModel):
 
 # Mock users database (in production: Azure Entra ID)
 MOCK_USERS: dict[str, UserProfile] = {
-    "admin_global": UserProfile(
+    "admin_default": UserProfile(
         id="usr_001",
         username="Alice Administrator",
         email="alice.admin@example.com",
         role=UserRole.ADMIN,
-        region=Region.GLOBAL,
+        group=Group.DEFAULT,
     ),
-    "senior_global": UserProfile(
+    "senior_default": UserProfile(
         id="usr_002",
         username="Bob Senior Analyst",
         email="bob.senior@example.com",
         role=UserRole.SENIOR_ANALYST,
-        region=Region.GLOBAL,
+        group=Group.DEFAULT,
     ),
-    "analyst_south": UserProfile(
+    "analyst_a": UserProfile(
         id="usr_003",
-        username="Carol Analyst (South)",
+        username="Carol Analyst (Group A)",
         email="carol.analyst@example.com",
         role=UserRole.ANALYST,
-        region=Region.SOUTH,
+        group=Group.GROUP_A,
     ),
-    "analyst_north": UserProfile(
+    "analyst_b": UserProfile(
         id="usr_004",
-        username="David Analyst (North)",
+        username="David Analyst (Group B)",
         email="david.analyst@example.com",
         role=UserRole.ANALYST,
-        region=Region.NORTH,
+        group=Group.GROUP_B,
     ),
-    "viewer_south": UserProfile(
+    "viewer_a": UserProfile(
         id="usr_005",
-        username="Eve Viewer (South)",
+        username="Eve Viewer (Group A)",
         email="eve.viewer@example.com",
         role=UserRole.VIEWER,
-        region=Region.SOUTH,
+        group=Group.GROUP_A,
     ),
 }
 

@@ -10,7 +10,7 @@ Orchestrates the request processing workflow:
 
 Implements RBAC/ABAC access control:
 - RBAC: Role-based permission checks
-- ABAC: Region-based filtering
+- ABAC: Group-based filtering
 
 Implements Observability & Human Feedback Loop:
 - LLM Tracing: Full trace of input, tool calls, and output
@@ -38,7 +38,7 @@ from app.services.auth_mock import (
     UserProfile,
     Permission,
     check_permission,
-    Region,
+    Group,
 )
 from app.services.validation import run_all_validations
 
@@ -53,7 +53,7 @@ class Processor:
     to analysis result generation and storage.
     
     All methods that access data enforce ABAC policies based on
-    the current user's region and permissions.
+    the current user's group and permissions.
     """
     
     def __init__(self, session: Session, user: Optional[UserProfile] = None):
@@ -85,7 +85,7 @@ class Processor:
         """
         Creates and persists a new request.
         
-        The request is tagged with the user's region for ABAC.
+        The request is tagged with the user's group for ABAC.
         
         Args:
             data: Request creation data
@@ -93,17 +93,17 @@ class Processor:
         Returns:
             Persisted Request with ID
         """
-        # Determine region from user or data
-        region = data.region
-        if self.user and data.region == "Global":
-            # If user has a specific region, use it for new requests
-            if self.user.region != Region.GLOBAL:
-                region = self.user.region.value
+        # Determine group from user or data
+        group = data.group
+        if self.user and data.group == "default":
+            # If user has a specific group, use it for new requests
+            if self.user.group != Group.DEFAULT:
+                group = self.user.group.value
         
         request = Request(
             input_text=data.input_text,
             context=data.context,
-            region=region,
+            group=group,
             created_by_user_id=self.user.id if self.user else None,
             created_at=datetime.utcnow(),
         )
@@ -112,7 +112,7 @@ class Processor:
         self.session.commit()
         self.session.refresh(request)
         
-        logger.info(f"Created request {request.id} in region {region}")
+        logger.info(f"Created request {request.id} in group {group}")
         return request
     
     def analyze_request(self, request: Request) -> AnalysisResult:
@@ -170,7 +170,7 @@ class Processor:
             summary=summary,
             processed_content=llm_response.processed_content,
             model_version=self.llm_service.get_model_version(),
-            region=request.region,  # Copy region for ABAC queries
+            group=request.group,  # Copy group for ABAC queries
             analyzed_by_user_id=self.user.id if self.user else None,
             # Observability: LLM trace
             llm_trace=llm_response.trace or {},
@@ -191,7 +191,7 @@ class Processor:
         
         logger.info(
             f"Created analysis result {result.id} for request {request.id}: "
-            f"score={result.score}, region={result.region}, "
+            f"score={result.score}, group={result.group}, "
             f"validation={validation_result.status}"
         )
         
@@ -223,7 +223,7 @@ class Processor:
         Applies ABAC filters to a query based on user attributes.
         
         Filters:
-        1. Region: Users only see their region (unless VIEW_ALL_REGIONS)
+        1. Group: Users only see their group (unless VIEW_ALL_GROUPS)
         2. Score: Users without VIEW_SENSITIVE can't see high scores
         """
         if not self.user:
@@ -231,10 +231,10 @@ class Processor:
         
         conditions = []
         
-        # Region filter (ABAC)
-        if not self.user.has_permission(Permission.VIEW_ALL_REGIONS):
-            if self.user.region != Region.GLOBAL:
-                conditions.append(AnalysisResult.region == self.user.region.value)
+        # Group filter (ABAC)
+        if not self.user.has_permission(Permission.VIEW_ALL_GROUPS):
+            if self.user.group != Group.DEFAULT:
+                conditions.append(AnalysisResult.group == self.user.group.value)
         
         # Score filter (ABAC based on permissions)
         if not self.user.has_permission(Permission.VIEW_SENSITIVE):
@@ -253,7 +253,7 @@ class Processor:
         """
         Retrieves a request with its analysis results.
         
-        ABAC: Checks if user can access this request's region.
+        ABAC: Checks if user can access this request's group.
         
         Args:
             request_id: ID of request to retrieve
@@ -267,11 +267,11 @@ class Processor:
         request = self.session.exec(statement).first()
         
         if request and self.user:
-            # ABAC check: can user access this region?
-            if not self.user.can_access_region(request.region):
+            # ABAC check: can user access this group?
+            if not self.user.can_access_group(request.group):
                 logger.warning(
                     f"User {self.user.username} denied access to request "
-                    f"{request_id} (region: {request.region})"
+                    f"{request_id} (group: {request.group})"
                 )
                 return None
         
@@ -281,7 +281,7 @@ class Processor:
         """
         Retrieves recent analysis results for dashboard display.
         
-        ABAC: Filters by user's region and permissions.
+        ABAC: Filters by user's group and permissions.
         
         Args:
             limit: Maximum number of results to return
@@ -310,7 +310,7 @@ class Processor:
         """
         Retrieves high-score results for review.
         
-        ABAC: Filters by user's region. Requires VIEW_SENSITIVE for scores >= 70.
+        ABAC: Filters by user's group. Requires VIEW_SENSITIVE for scores >= 70.
         
         Args:
             min_score: Minimum score threshold
@@ -342,30 +342,30 @@ class Processor:
         
         return list(self.session.exec(statement).all())
     
-    def get_results_by_region(self, region: str, limit: int = 20) -> list[AnalysisResult]:
+    def get_results_by_group(self, group: str, limit: int = 20) -> list[AnalysisResult]:
         """
-        Retrieves results for a specific region.
+        Retrieves results for a specific group.
         
-        ABAC: User must have access to the requested region.
+        ABAC: User must have access to the requested group.
         
         Args:
-            region: Region to filter by
+            group: Group to filter by
             limit: Maximum number of results
             
         Returns:
-            List of AnalysisResults for the region
+            List of AnalysisResults for the group
         """
         self._check_view_permission()
         
         # ABAC check
-        if self.user and not self.user.can_access_region(region):
+        if self.user and not self.user.can_access_group(group):
             raise PermissionError(
-                f"Access denied. User '{self.user.username}' cannot access region '{region}'."
+                f"Access denied. User '{self.user.username}' cannot access group '{group}'."
             )
         
         statement = (
             select(AnalysisResult)
-            .where(AnalysisResult.region == region)
+            .where(AnalysisResult.group == group)
             .order_by(AnalysisResult.created_at.desc())
             .limit(limit)
         )
@@ -389,19 +389,19 @@ class Processor:
                 "high_score_count": 0,
                 "critical_count": 0,
                 "average_score": 0,
-                "regions_visible": [],
+                "groups_visible": [],
             }
         
         high_score = [r for r in results if r.score >= 50]
         critical = [r for r in results if r.score >= 76]
-        regions = list(set(r.region for r in results))
+        groups = list(set(r.group for r in results))
         
         return {
             "total_analyzed": len(results),
             "high_score_count": len(high_score),
             "critical_count": len(critical),
             "average_score": sum(r.score for r in results) / len(results),
-            "regions_visible": regions,
+            "groups_visible": groups,
         }
 
     def submit_feedback(

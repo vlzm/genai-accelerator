@@ -15,7 +15,7 @@ class AnalyzeRequest(BaseModel):
     """Request to analyze input data."""
     input_text: str = Field(..., max_length=5000, description="Primary input text to analyze")
     context: Optional[str] = Field(None, max_length=2000, description="Additional context")
-    region: str = Field(default="Global", max_length=20, description="Geographic region")
+    group: str = Field(default="default", max_length=50, description="Group for ABAC filtering")
     
     model_config = {
         "json_schema_extra": {
@@ -23,7 +23,7 @@ class AnalyzeRequest(BaseModel):
                 {
                     "input_text": "Analyze this text for any interesting patterns or insights.",
                     "context": "This is a sample input for demonstration purposes.",
-                    "region": "EMEA",
+                    "group": "group_a",
                 }
             ]
         }
@@ -56,7 +56,7 @@ class RequestResponse(BaseModel):
     id: int
     input_text: str
     context: Optional[str]
-    region: str
+    group: str
     created_at: datetime
 
 
@@ -69,7 +69,7 @@ class AnalysisResultResponse(BaseModel):
     summary: str
     processed_content: Optional[str]
     model_version: str
-    region: str
+    group: str
     validation_status: str
     validation_details: Optional[str]
     human_feedback: Optional[bool]
