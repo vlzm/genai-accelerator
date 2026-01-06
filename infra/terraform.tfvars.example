@@ -1,0 +1,16 @@
+# Azure GenAI Accelerator - Terraform Variables Example
+# Copy this file to terraform.tfvars and fill in your values
+
+# Project configuration
+project_name = "genai"
+location     = "eastus"
+environment  = "dev"
+
+# Database password (use a strong password)
+db_admin_password = "YourStrongPassword123!"
+
+# OpenAI API key
+openai_api_key = "sk-..."
+
+# Optional: Change the model
+openai_model = "gpt-4.1"

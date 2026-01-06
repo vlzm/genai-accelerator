@@ -9,7 +9,7 @@ Run model: ollama run llama3.2
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 from tenacity import (
@@ -40,7 +40,10 @@ class OllamaProvider(BaseLLMProvider):
         self,
         model: str = "llama3.2",
         base_url: str = "http://localhost:11434",
+        system_prompt: Optional[str] = None,
     ):
+        super().__init__(system_prompt=system_prompt)
+        
         self.model = model
         self.base_url = base_url.rstrip("/")
         self._model_version = f"ollama/{model}"
@@ -124,24 +127,5 @@ class OllamaProvider(BaseLLMProvider):
             logger.error(f"Ollama connection error: {e}")
             raise
     
-    def _call_api_with_tools(
-        self,
-        messages: list[dict],
-        tools: list[dict],
-        temperature: float = 0.1,
-        max_tokens: int = 1000,
-    ) -> dict:
-        """
-        Tool calling for Ollama.
-        
-        Note: Ollama has limited tool support. For simplicity in this MVP,
-        we fall back to simple mode.
-        """
-        # TODO: Implement Ollama tool calling (requires compatible models)
-        logger.warning("Ollama tool calling not implemented, using simple mode")
-        content = self._call_api(messages, temperature, max_tokens)
-        return {"content": content, "tool_calls": None}
-    
     def get_model_version(self) -> str:
         return self._model_version
-

@@ -1,10 +1,10 @@
 """
-Streamlit UI for KYC/AML Analyzer.
+Streamlit UI for Azure GenAI Accelerator.
 
 Provides a user interface for:
-- Submitting transactions for risk analysis
+- Submitting input data for AI analysis
 - Viewing analysis results
-- Reviewing historical reports
+- Reviewing historical results
 
 Implements:
 - Mock Identity Provider for RBAC/ABAC demonstration
@@ -15,24 +15,23 @@ Run with: streamlit run app/main.py
 """
 
 import streamlit as st
-from decimal import Decimal, InvalidOperation
 
 from app.database import init_db, get_session
-from app.models import TransactionCreate
-from app.services.risk_engine import RiskEngine
+from app.models import RequestCreate
+from app.services.processor import Processor
 from app.services.auth_mock import (
     get_all_users,
     get_current_user,
     UserProfile,
     Permission,
-    Region,
+    Group,
 )
 
 
 # Page configuration
 st.set_page_config(
-    page_title="KYC/AML Analyzer",
-    page_icon="🛡️",
+    page_title="Azure GenAI Accelerator",
+    page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -40,25 +39,25 @@ st.set_page_config(
 # Custom CSS for better styling
 st.markdown("""
 <style>
-    .risk-low { 
+    .score-low { 
         background-color: #d4edda; 
         padding: 1rem; 
         border-radius: 0.5rem; 
         border-left: 4px solid #28a745;
     }
-    .risk-medium { 
+    .score-medium { 
         background-color: #fff3cd; 
         padding: 1rem; 
         border-radius: 0.5rem;
         border-left: 4px solid #ffc107;
     }
-    .risk-high { 
+    .score-high { 
         background-color: #f8d7da; 
         padding: 1rem; 
         border-radius: 0.5rem;
         border-left: 4px solid #dc3545;
     }
-    .risk-critical { 
+    .score-critical { 
         background-color: #721c24; 
         color: white;
         padding: 1rem; 
@@ -78,36 +77,49 @@ st.markdown("""
         margin-bottom: 0.5rem;
     }
     .role-admin { background-color: #6f42c1; color: white; }
-    .role-senior_officer { background-color: #007bff; color: white; }
-    .role-officer { background-color: #28a745; color: white; }
+    .role-senior_analyst { background-color: #007bff; color: white; }
+    .role-analyst { background-color: #28a745; color: white; }
     .role-viewer { background-color: #6c757d; color: white; }
 </style>
 """, unsafe_allow_html=True)
 
 
-def get_risk_color(risk_level: str) -> str:
-    """Returns color code for risk level."""
-    colors = {
-        "LOW": "#28a745",
-        "MEDIUM": "#ffc107", 
-        "HIGH": "#dc3545",
-        "CRITICAL": "#721c24",
-    }
-    return colors.get(risk_level.upper(), "#6c757d")
+def get_score_color(score: int) -> str:
+    """Returns color code for score level."""
+    if score >= 76:
+        return "#721c24"  # Critical
+    elif score >= 51:
+        return "#dc3545"  # High
+    elif score >= 26:
+        return "#ffc107"  # Medium
+    else:
+        return "#28a745"  # Low
+
+
+def get_score_level(score: int) -> str:
+    """Returns level string for score."""
+    if score >= 76:
+        return "CRITICAL"
+    elif score >= 51:
+        return "HIGH"
+    elif score >= 26:
+        return "MEDIUM"
+    else:
+        return "LOW"
 
 
 def get_role_color(role: str) -> str:
     """Returns color for user role."""
     colors = {
         "admin": "#6f42c1",
-        "senior_officer": "#007bff",
-        "officer": "#28a745",
+        "senior_analyst": "#007bff",
+        "analyst": "#28a745",
         "viewer": "#6c757d",
     }
     return colors.get(role, "#6c757d")
 
 
-def render_feedback_section(report_id: int, current_user: UserProfile):
+def render_feedback_section(result_id: int, current_user: UserProfile):
     """
     Render the Human Feedback section for Data Flywheel.
     
@@ -119,47 +131,47 @@ def render_feedback_section(report_id: int, current_user: UserProfile):
     """
     with st.expander("🕵️ Human Verification (Data Flywheel)", expanded=True):
         st.markdown(
-            "**Help improve the model.** Is this risk assessment correct?\n\n"
+            "**Help improve the model.** Is this analysis correct?\n\n"
             "_Your feedback builds our 'Golden Dataset' for model evaluation._"
         )
         
         col1, col2 = st.columns(2)
         
-        # Use unique keys based on report_id
+        # Use unique keys based on result_id
         with col1:
-            if st.button("👍 Correct", key=f"feedback_pos_{report_id}", use_container_width=True):
+            if st.button("👍 Correct", key=f"feedback_pos_{result_id}", use_container_width=True):
                 try:
                     with get_session() as session:
-                        engine = RiskEngine(session, user=current_user)
-                        engine.submit_feedback(report_id, feedback=True)
+                        processor = Processor(session, user=current_user)
+                        processor.submit_feedback(result_id, feedback=True)
                     st.success("✅ Thank you! Marked as correct. Data saved for model improvement.")
                 except Exception as e:
                     st.error(f"Failed to save feedback: {e}")
         
         with col2:
-            if st.button("👎 Incorrect", key=f"feedback_neg_{report_id}", use_container_width=True):
-                st.session_state[f"show_feedback_form_{report_id}"] = True
+            if st.button("👎 Incorrect", key=f"feedback_neg_{result_id}", use_container_width=True):
+                st.session_state[f"show_feedback_form_{result_id}"] = True
         
         # Show feedback form if negative feedback selected
-        if st.session_state.get(f"show_feedback_form_{report_id}", False):
-            with st.form(f"feedback_form_{report_id}"):
+        if st.session_state.get(f"show_feedback_form_{result_id}", False):
+            with st.form(f"feedback_form_{result_id}"):
                 feedback_comment = st.text_area(
                     "What was wrong? (optional)",
-                    placeholder="e.g., Risk score too high, wrong factors identified...",
+                    placeholder="e.g., Score too high, wrong categories identified...",
                     help="Your explanation helps with Error Analysis",
                 )
                 
                 if st.form_submit_button("Submit Feedback"):
                     try:
                         with get_session() as session:
-                            engine = RiskEngine(session, user=current_user)
-                            engine.submit_feedback(
-                                report_id,
+                            processor = Processor(session, user=current_user)
+                            processor.submit_feedback(
+                                result_id,
                                 feedback=False,
                                 comment=feedback_comment if feedback_comment else None,
                             )
                         st.warning("📝 Recorded as error. Will be reviewed by expert.")
-                        st.session_state[f"show_feedback_form_{report_id}"] = False
+                        st.session_state[f"show_feedback_form_{result_id}"] = False
                     except Exception as e:
                         st.error(f"Failed to save feedback: {e}")
 
@@ -174,9 +186,9 @@ def init_session_state():
             st.error(f"Failed to initialize database: {e}")
             st.session_state.db_initialized = False
     
-    # Initialize selected user (default to officer_south for demo)
+    # Initialize selected user (default to analyst_a for demo)
     if "selected_user_key" not in st.session_state:
-        st.session_state.selected_user_key = "officer_south"
+        st.session_state.selected_user_key = "analyst_a"
 
 
 def get_current_user_from_session() -> UserProfile:
@@ -220,25 +232,24 @@ def render_identity_simulator():
             "id": current_user.id,
             "username": current_user.username,
             "role": current_user.role.value,
-            "region": current_user.region.value,
-            "clearance_level": current_user.clearance_level,
+            "group": current_user.group.value,
             "permissions": [p.value for p in Permission if current_user.has_permission(p)],
         })
     
     # Show access summary
     st.sidebar.markdown("**Access Level:**")
-    if current_user.has_permission(Permission.VIEW_ALL_REGIONS):
-        st.sidebar.success("🌍 All Regions")
+    if current_user.has_permission(Permission.VIEW_ALL_GROUPS):
+        st.sidebar.success("🌍 All Groups")
     else:
-        st.sidebar.info(f"📍 {current_user.region.value} only")
+        st.sidebar.info(f"📍 {current_user.group.value} only")
     
-    if current_user.has_permission(Permission.ANALYZE_TRANSACTIONS):
+    if current_user.has_permission(Permission.ANALYZE):
         st.sidebar.success("✅ Can Analyze")
     else:
         st.sidebar.warning("🚫 View Only")
     
-    if current_user.has_permission(Permission.VIEW_HIGH_RISK):
-        st.sidebar.success("🔴 High Risk Visible")
+    if current_user.has_permission(Permission.VIEW_SENSITIVE):
+        st.sidebar.success("🔴 High Score Visible")
     else:
         st.sidebar.warning("🟡 Limited to <70 score")
     
@@ -248,7 +259,7 @@ def render_identity_simulator():
 def render_sidebar(current_user: UserProfile):
     """Render sidebar navigation."""
     with st.sidebar:
-        st.title("🛡️ KYC/AML Analyzer")
+        st.title("🚀 GenAI Accelerator")
         
         page = st.radio(
             "Navigation",
@@ -257,214 +268,131 @@ def render_sidebar(current_user: UserProfile):
         )
         
         st.markdown("---")
-        st.caption("Secure KYC/AML Analysis Tool")
-        st.caption("v2.1.0 | Observability Enabled")
+        st.caption("Azure GenAI Accelerator")
+        st.caption("v1.0.0 | Template Edition")
         
         return page
 
 
 def render_new_analysis(current_user: UserProfile):
-    """Render the new transaction analysis form."""
-    st.header("📝 Transaction Risk Analysis")
+    """Render the new analysis form."""
+    st.header("📝 AI-Powered Analysis")
     
     # RBAC check: Can user analyze?
-    if not current_user.has_permission(Permission.ANALYZE_TRANSACTIONS):
+    if not current_user.has_permission(Permission.ANALYZE):
         st.error(
             f"🚫 **Access Denied**\n\n"
-            f"Your role ({current_user.role.value}) does not have permission to analyze transactions.\n"
+            f"Your role ({current_user.role.value}) does not have permission to analyze.\n"
             f"Please contact an administrator to upgrade your access."
         )
-        st.info("💡 Try switching to 'Carol Officer' or 'Alice Administrator' in the Identity Simulator.")
+        st.info("💡 Try switching to 'Carol Analyst' or 'Alice Administrator' in the Identity Simulator.")
         return
     
-    st.markdown("Submit a transaction for AI-powered AML/KYC risk assessment.")
+    st.markdown("Submit input data for AI-powered analysis.")
     
     # Show user context
     st.info(
         f"📍 Logged in as **{current_user.username}** | "
-        f"Region: **{current_user.region.value}** | "
-        f"Clearance: **Level {current_user.clearance_level}**"
+        f"Group: **{current_user.group.value}**"
     )
     
-    with st.form("transaction_form"):
-        col1, col2 = st.columns(2)
+    with st.form("analysis_form"):
+        # Group selector (ABAC)
+        if current_user.has_permission(Permission.VIEW_ALL_GROUPS):
+            group_options = [g.value for g in Group]
+            group = st.selectbox("Group", group_options, index=0)
+        else:
+            group = current_user.group.value
+            st.text_input("Group", value=group, disabled=True)
         
-        with col1:
-            sender_id = st.text_input(
-                "Sender ID",
-                placeholder="e.g., ACC-123456",
-                help="Unique identifier for the sender",
-            )
-            
-            amount = st.text_input(
-                "Amount",
-                placeholder="e.g., 10000.00",
-                help="Transaction amount",
-            )
-            
-            # Region selector (ABAC)
-            if current_user.has_permission(Permission.VIEW_ALL_REGIONS):
-                region_options = [r.value for r in Region]
-                region = st.selectbox("Region", region_options, index=0)
-            else:
-                region = current_user.region.value
-                st.text_input("Region", value=region, disabled=True)
-            
-        with col2:
-            receiver_id = st.text_input(
-                "Receiver ID", 
-                placeholder="e.g., ACC-789012",
-                help="Unique identifier for the receiver",
-            )
-            
-            currency = st.selectbox(
-                "Currency",
-                ["USD", "EUR", "GBP", "CHF", "JPY"],
-                help="Transaction currency",
-            )
-        
-        comment = st.text_area(
-            "Transaction Comment",
-            placeholder="Enter the transaction comment or description to analyze...",
-            height=150,
-            help="This text will be analyzed for AML/KYC risk indicators",
+        input_text = st.text_area(
+            "Input Data",
+            placeholder="Enter the text you want to analyze...",
+            height=200,
+            help="This text will be processed by the AI model",
         )
         
-        submitted = st.form_submit_button("🔍 Analyze Transaction", use_container_width=True)
+        context = st.text_area(
+            "Additional Context (optional)",
+            placeholder="Any additional context or instructions for the analysis...",
+            height=100,
+            help="Optional context to help guide the analysis",
+        )
+        
+        submitted = st.form_submit_button("🔍 Process", use_container_width=True)
     
     if submitted:
         # Validation
-        errors = []
-        if not sender_id.strip():
-            errors.append("Sender ID is required")
-        if not receiver_id.strip():
-            errors.append("Receiver ID is required")
-        if not comment.strip():
-            errors.append("Transaction comment is required")
-        
-        try:
-            amount_decimal = Decimal(amount) if amount else Decimal("0")
-            if amount_decimal <= 0:
-                errors.append("Amount must be greater than 0")
-        except InvalidOperation:
-            errors.append("Invalid amount format")
-            amount_decimal = None
-        
-        if errors:
-            for error in errors:
-                st.error(error)
+        if not input_text.strip():
+            st.error("Input data is required")
             return
         
-        # Process transaction with user context
-        with st.spinner("🔄 Analyzing transaction with AI..."):
+        # Process request with user context
+        with st.spinner("🔄 Processing with AI..."):
             try:
                 with get_session() as session:
-                    # Pass current user to engine for ABAC
-                    engine = RiskEngine(session, user=current_user)
+                    # Pass current user to processor for ABAC
+                    processor = Processor(session, user=current_user)
                     
-                    transaction_data = TransactionCreate(
-                        comment=comment.strip(),
-                        amount=amount_decimal,
-                        currency=currency,
-                        sender_id=sender_id.strip(),
-                        receiver_id=receiver_id.strip(),
-                        region=region,
+                    request_data = RequestCreate(
+                        input_text=input_text.strip(),
+                        context=context.strip() if context else None,
+                        group=group,
                     )
                     
-                    transaction, report = engine.process_transaction(transaction_data)
+                    request, result = processor.process_request(request_data)
                 
                 # Display results
                 st.success("✅ Analysis Complete!")
                 st.markdown("---")
                 
-                # Risk score display
+                # Score display
                 col1, col2, col3 = st.columns([1, 2, 1])
                 
                 with col2:
-                    risk_color = get_risk_color(report.risk_level)
+                    score_color = get_score_color(result.score)
+                    score_level = get_score_level(result.score)
                     
                     st.markdown(f"""
-                    <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, {risk_color}22, {risk_color}44); border-radius: 1rem; border: 2px solid {risk_color};">
-                        <h1 style="color: {risk_color}; margin: 0; font-size: 4rem;">{report.risk_score}</h1>
-                        <h2 style="color: {risk_color}; margin: 0.5rem 0;">{report.risk_level}</h2>
-                        <p style="margin: 0; color: #666;">Risk Score</p>
+                    <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, {score_color}22, {score_color}44); border-radius: 1rem; border: 2px solid {score_color};">
+                        <h1 style="color: {score_color}; margin: 0; font-size: 4rem;">{result.score}</h1>
+                        <h2 style="color: {score_color}; margin: 0.5rem 0;">{score_level}</h2>
+                        <p style="margin: 0; color: #666;">Analysis Score</p>
                     </div>
                     """, unsafe_allow_html=True)
                 
                 st.markdown("---")
                 
-                # Risk factors
-                if report.risk_factors:
-                    st.subheader("⚠️ Risk Factors Identified")
-                    for factor in report.risk_factors:
-                        st.markdown(f"- {factor}")
+                # Categories
+                if result.categories:
+                    st.subheader("🏷️ Categories Identified")
+                    for category in result.categories:
+                        st.markdown(f"- {category}")
                 else:
-                    st.info("No specific risk factors identified.")
+                    st.info("No specific categories identified.")
                 
-                # LLM reasoning
+                # Summary/Reasoning
                 st.subheader("🤖 AI Analysis")
-                st.markdown(report.llm_reasoning)
+                st.markdown(result.summary)
                 
-                # Guardrail status
-                if report.guardrail_status != "PASS":
+                # Validation status
+                if result.validation_status != "PASS":
                     st.warning(
-                        f"⚠️ **Guardrail Alert**: {report.guardrail_status}\n\n"
-                        f"{report.guardrail_details or ''}"
+                        f"⚠️ **Validation Alert**: {result.validation_status}\n\n"
+                        f"{result.validation_details or ''}"
                     )
-                
-                # Similar Cases (RAG) - Refresh engine with new session
-                with get_session() as rag_session:
-                    rag_engine = RiskEngine(rag_session, user=current_user)
-                    
-                    if rag_engine.is_rag_enabled():
-                        with st.expander("🔍 Similar Historical Cases (RAG)", expanded=True):
-                            st.caption(
-                                "AI-powered similarity search finds past cases that may help inform your decision. "
-                                "This feature can be disabled with RAG_ENABLED=false."
-                            )
-                            
-                            # Need to re-fetch report in this session
-                            from sqlmodel import select
-                            from app.models import RiskReport as ReportModel
-                            fresh_report = rag_session.exec(
-                                select(ReportModel).where(ReportModel.id == report.id)
-                            ).first()
-                            
-                            if fresh_report:
-                                similar_cases = rag_engine.find_similar_cases(fresh_report, limit=3)
-                                
-                                if similar_cases:
-                                    for i, similar in enumerate(similar_cases, 1):
-                                        sim_color = get_risk_color(similar.risk_level)
-                                        st.markdown(f"""
-                                        **Case #{i}** (Report #{similar.id})
-                                        - Risk: <span style="color: {sim_color}; font-weight: bold;">{similar.risk_level}</span> ({similar.risk_score})
-                                        - Region: {similar.region}
-                                        - Date: {similar.created_at.strftime('%Y-%m-%d')}
-                                        - Factors: {', '.join(similar.risk_factors[:3])}{'...' if len(similar.risk_factors) > 3 else ''}
-                                        """, unsafe_allow_html=True)
-                                        st.markdown("---")
-                                else:
-                                    st.info(
-                                        "No similar cases found yet. "
-                                        "This improves as more transactions are analyzed."
-                                    )
                 
                 # Human Feedback Loop section
                 st.markdown("---")
-                render_feedback_section(report.id, current_user)
+                render_feedback_section(result.id, current_user)
                 
-                # Transaction details
-                with st.expander("📄 Transaction Details"):
+                # Request details
+                with st.expander("📄 Request Details"):
                     st.json({
-                        "transaction_id": transaction.id,
-                        "sender_id": transaction.sender_id,
-                        "receiver_id": transaction.receiver_id,
-                        "amount": str(transaction.amount),
-                        "currency": transaction.currency,
-                        "region": transaction.region,
+                        "request_id": request.id,
+                        "group": request.group,
                         "created_by": current_user.username,
-                        "created_at": transaction.created_at.isoformat(),
+                        "created_at": request.created_at.isoformat(),
                     })
                 
                 # LLM Trace (Observability)
@@ -473,8 +401,8 @@ def render_new_analysis(current_user: UserProfile):
                         "Full trace of LLM interaction for debugging and evaluation. "
                         "This data enables Error Analysis when the model makes mistakes."
                     )
-                    if report.llm_trace:
-                        st.json(report.llm_trace)
+                    if result.llm_trace:
+                        st.json(result.llm_trace)
                     else:
                         st.info("No trace data available.")
                     
@@ -486,83 +414,84 @@ def render_new_analysis(current_user: UserProfile):
 
 
 def render_dashboard(current_user: UserProfile):
-    """Render the dashboard with recent reports."""
-    st.header("📊 Risk Analysis Dashboard")
+    """Render the dashboard with recent results."""
+    st.header("📊 Analysis Dashboard")
     
     # Show user context and what they can see
     col1, col2 = st.columns([3, 1])
     with col1:
         st.info(
             f"📍 Viewing as **{current_user.username}** | "
-            f"Region: **{'All' if current_user.has_permission(Permission.VIEW_ALL_REGIONS) else current_user.region.value}** | "
-            f"Max Risk Score Visible: **{current_user.get_max_visible_risk_score()}**"
+            f"Group: **{'All' if current_user.has_permission(Permission.VIEW_ALL_GROUPS) else current_user.group.value}** | "
+            f"Max Score Visible: **{current_user.get_max_visible_score()}**"
         )
     
     try:
         with get_session() as session:
-            engine = RiskEngine(session, user=current_user)
+            processor = Processor(session, user=current_user)
             
             # Get stats with ABAC applied
-            stats = engine.get_dashboard_stats()
+            stats = processor.get_dashboard_stats()
             
             # Summary metrics
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("📊 Visible Reports", stats["total_analyzed"])
+                st.metric("📊 Visible Results", stats["total_analyzed"])
             with col2:
-                st.metric("⚠️ High Risk", stats["high_risk_count"])
+                st.metric("⚠️ High Score", stats["high_score_count"])
             with col3:
                 st.metric("🔴 Critical", stats["critical_count"], delta_color="inverse")
             with col4:
                 st.metric("📈 Avg Score", f"{stats['average_score']:.1f}")
             
-            # Show which regions are visible
-            if stats["regions_visible"]:
-                st.caption(f"Regions visible: {', '.join(stats['regions_visible'])}")
+            # Show which groups are visible
+            if stats["groups_visible"]:
+                st.caption(f"Groups visible: {', '.join(stats['groups_visible'])}")
             
             st.markdown("---")
             
-            # Recent reports table
-            st.subheader("📋 Recent Analysis Reports")
+            # Recent results table
+            st.subheader("📋 Recent Analysis Results")
             
-            recent = engine.get_recent_reports(limit=10)
+            recent = processor.get_recent_results(limit=10)
             
             if recent:
-                for report in recent:
-                    risk_color = get_risk_color(report.risk_level)
+                for result in recent:
+                    score_color = get_score_color(result.score)
+                    score_level = get_score_level(result.score)
                     with st.expander(
-                        f"Report #{report.id} | Score: {report.risk_score} | "
-                        f"{report.risk_level} | Region: {report.region}",
+                        f"Result #{result.id} | Score: {result.score} | "
+                        f"{score_level} | Group: {result.group}",
                         expanded=False,
                     ):
                         col1, col2 = st.columns([1, 3])
                         with col1:
-                            st.metric("Risk Score", report.risk_score)
-                            st.write(f"**Level:** {report.risk_level}")
-                            st.write(f"**Region:** {report.region}")
-                            st.write(f"**Date:** {report.created_at.strftime('%Y-%m-%d %H:%M')}")
+                            st.metric("Score", result.score)
+                            st.write(f"**Level:** {score_level}")
+                            st.write(f"**Group:** {result.group}")
+                            st.write(f"**Date:** {result.created_at.strftime('%Y-%m-%d %H:%M')}")
                         with col2:
-                            st.write("**Risk Factors:**")
-                            for factor in report.risk_factors:
-                                st.markdown(f"- {factor}")
-                            st.write("**AI Reasoning:**")
-                            st.markdown(report.llm_reasoning)
+                            st.write("**Categories:**")
+                            for cat in result.categories:
+                                st.markdown(f"- {cat}")
+                            st.write("**AI Summary:**")
+                            st.markdown(result.summary)
             else:
                 st.info(
-                    "No reports visible with your current access level.\n\n"
+                    "No results visible with your current access level.\n\n"
                     "This could mean:\n"
-                    "- No reports exist in your region\n"
-                    "- All reports exceed your clearance level\n\n"
+                    "- No results exist in your group\n"
+                    "- All results exceed your access level\n\n"
                     "💡 Try switching to a user with higher access in the Identity Simulator."
                 )
             
             # ABAC demo: show what's hidden
-            if not current_user.has_permission(Permission.VIEW_ALL_REGIONS):
+            if not current_user.has_permission(Permission.VIEW_ALL_GROUPS):
                 st.markdown("---")
                 st.caption(
-                    f"🔒 You are only seeing reports from the **{current_user.region.value}** region. "
-                    f"Switch to 'Alice Admin' or 'Bob Senior' to see all regions."
+                    f"🔒 You are only seeing results from the **{current_user.group.value}** group. "
+                    f"Switch to 'Alice Admin' or 'Bob Senior' to see all groups."
                 )
                 
     except Exception as e:
@@ -574,31 +503,30 @@ def render_evaluation(current_user: UserProfile):
     """
     Render the Evaluation Dashboard.
     
-    Shows model quality metrics, feedback statistics, and reports needing review.
-    This is the "Enlightened Dictator" view for monitoring model performance.
+    Shows model quality metrics, feedback statistics, and results needing review.
     """
     st.header("🔬 Model Evaluation Dashboard")
     
     st.markdown("""
     This dashboard provides visibility into model quality through:
     - **Human Feedback Statistics** - accuracy based on expert verdicts
-    - **Guardrail Metrics** - automated safety check results
-    - **Reports Needing Review** - prioritized queue for expert review
+    - **Validation Metrics** - automated safety check results
+    - **Results Needing Review** - prioritized queue for expert review
     """)
     
     try:
         with get_session() as session:
-            engine = RiskEngine(session, user=current_user)
+            processor = Processor(session, user=current_user)
             
             # Feedback statistics
-            stats = engine.get_feedback_stats()
+            stats = processor.get_feedback_stats()
             
             st.subheader("📈 Feedback Statistics")
             
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("📊 Total Reports", stats["total_reports"])
+                st.metric("📊 Total Results", stats["total_results"])
             
             with col2:
                 st.metric(
@@ -651,80 +579,81 @@ def render_evaluation(current_user: UserProfile):
                     "Collect human feedback using the 👍/👎 buttons to build the Golden Dataset."
                 )
             
-            # Guardrail failures
+            # Validation failures
             st.markdown("---")
-            st.subheader("🛡️ Guardrail Results")
+            st.subheader("🛡️ Validation Results")
             
-            if stats["guardrail_failures"]:
-                st.warning("⚠️ Guardrail failures detected:")
+            if stats["validation_failures"]:
+                st.warning("⚠️ Validation failures detected:")
                 
-                for status, count in stats["guardrail_failures"].items():
+                for status, count in stats["validation_failures"].items():
                     st.markdown(f"- **{status}**: {count} occurrences")
                 
                 st.caption(
-                    "Guardrail failures indicate potential issues like PII leakage "
-                    "or inconsistent risk assessments. Review these reports immediately."
+                    "Validation failures indicate potential issues like low quality responses "
+                    "or inconsistent assessments. Review these results immediately."
                 )
             else:
-                st.success("✅ All guardrails passing. No safety issues detected.")
+                st.success("✅ All validations passing. No issues detected.")
             
-            # Reports needing review
+            # Results needing review
             st.markdown("---")
-            st.subheader("📋 Reports Needing Review")
+            st.subheader("📋 Results Needing Review")
             
             st.caption(
-                "Prioritized queue: guardrail failures first, then high-risk reports without feedback."
+                "Prioritized queue: validation failures first, then high-score results without feedback."
             )
             
-            reports_to_review = engine.get_reports_needing_review(limit=10)
+            results_to_review = processor.get_results_needing_review(limit=10)
             
-            if reports_to_review:
-                for report in reports_to_review:
-                    risk_color = get_risk_color(report.risk_level)
+            if results_to_review:
+                for result in results_to_review:
+                    score_color = get_score_color(result.score)
+                    score_level = get_score_level(result.score)
                     
                     # Build status tags
                     tags = []
-                    if report.guardrail_status != "PASS":
-                        tags.append(f"🚨 {report.guardrail_status}")
-                    if report.human_feedback is None:
+                    if result.validation_status != "PASS":
+                        tags.append(f"🚨 {result.validation_status}")
+                    if result.human_feedback is None:
                         tags.append("⏳ Pending Feedback")
                     
                     tag_str = " | ".join(tags) if tags else ""
                     
                     with st.expander(
-                        f"Report #{report.id} | {report.risk_level} ({report.risk_score}) | {tag_str}",
+                        f"Result #{result.id} | {score_level} ({result.score}) | {tag_str}",
                         expanded=False,
                     ):
                         col1, col2 = st.columns([1, 2])
                         
                         with col1:
-                            st.metric("Risk Score", report.risk_score)
-                            st.write(f"**Level:** {report.risk_level}")
-                            st.write(f"**Region:** {report.region}")
-                            st.write(f"**Guardrail:** {report.guardrail_status}")
+                            st.metric("Score", result.score)
+                            st.write(f"**Level:** {score_level}")
+                            st.write(f"**Group:** {result.group}")
+                            st.write(f"**Validation:** {result.validation_status}")
                             
-                            if report.guardrail_details:
-                                st.error(report.guardrail_details)
+                            if result.validation_details:
+                                st.error(result.validation_details)
                         
                         with col2:
-                            st.write("**Risk Factors:**")
-                            for factor in report.risk_factors:
-                                st.markdown(f"- {factor}")
+                            st.write("**Categories:**")
+                            for cat in result.categories:
+                                st.markdown(f"- {cat}")
                             
-                            st.write("**AI Reasoning:**")
-                            st.markdown(report.llm_reasoning[:500] + "..." if len(report.llm_reasoning) > 500 else report.llm_reasoning)
+                            st.write("**AI Summary:**")
+                            st.markdown(result.summary[:500] + "..." if len(result.summary) > 500 else result.summary)
                         
                         # Feedback buttons
                         st.markdown("---")
-                        render_feedback_section(report.id, current_user)
+                        render_feedback_section(result.id, current_user)
                         
                         # Trace viewer
-                        if report.llm_trace:
+                        if result.llm_trace:
                             with st.expander("🔍 LLM Trace"):
-                                st.json(report.llm_trace)
+                                st.json(result.llm_trace)
             else:
-                st.success("🎉 No reports requiring immediate review!")
-                st.info("All reports have passed guardrails and received feedback.")
+                st.success("🎉 No results requiring immediate review!")
+                st.info("All results have passed validation and received feedback.")
                 
     except Exception as e:
         st.error(f"Failed to load evaluation data: {e}")
@@ -733,65 +662,59 @@ def render_evaluation(current_user: UserProfile):
 
 def render_about(current_user: UserProfile):
     """Render the about page."""
-    st.header("ℹ️ About KYC/AML Analyzer")
+    st.header("ℹ️ About Azure GenAI Accelerator")
     
     st.markdown("""
     ## Overview
     
-    The **Secure KYC/AML Analyzer** is a GenAI-powered compliance tool for detecting 
-    risk in transaction comments. It uses Azure OpenAI to analyze transaction data 
-    and identify potential AML (Anti-Money Laundering) and KYC (Know Your Customer) concerns.
+    The **Azure GenAI Accelerator** is a production-ready template for building
+    GenAI-powered applications on Azure. It provides a secure, scalable foundation
+    with enterprise-grade features out of the box.
     
-    ## Security Features
+    ## Key Features
     
     - 🔐 **Zero Trust Architecture**: No hardcoded secrets
     - 🌐 **Network Isolation**: Designed for Azure VNET deployment
-    - 🎫 **Managed Identity**: Uses Azure AD for authentication
+    - 🎫 **Managed Identity**: Uses Azure Entra ID for authentication
     - 🔒 **Key Vault Integration**: Secrets stored securely
     - 👤 **RBAC**: Role-based access control for actions
-    - 📍 **ABAC**: Attribute-based filtering by region and clearance
+    - 📍 **ABAC**: Attribute-based filtering by group
     
     ## Observability & Evaluation
     
     Built-in features for model quality monitoring:
     
-    - 🔍 **LLM Tracing**: Full trace of input, tool calls, and output for debugging
-    - 🛡️ **Guardrails**: Automated safety checks (PII leakage, consistency)
+    - 🔍 **LLM Tracing**: Full trace of input and output for debugging
+    - 🛡️ **Validation**: Automated quality checks
     - 👍👎 **Human Feedback Loop**: Binary feedback collection for model improvement
     - 📊 **Evaluation Dashboard**: Accuracy estimates and review queue
-    
-    This enables the "Enlightened Dictator" approach to model quality:
-    1. Collect real-world feedback (Golden Dataset)
-    2. Analyze errors with full traces
-    3. Make informed decisions about improvements
-    
-    ## Access Control Model
-    
-    | Role | Can Analyze | See High Risk | All Regions |
-    |------|-------------|---------------|-------------|
-    | Admin | ✅ | ✅ | ✅ |
-    | Senior Officer | ✅ | ✅ | ✅ |
-    | Officer | ✅ | ✅ | ❌ (own region) |
-    | Viewer | ❌ | ❌ | ❌ (own region) |
-    
-    ## Risk Levels
-    
-    | Level | Score Range | Action |
-    |-------|-------------|--------|
-    | LOW | 0-25 | Normal transaction |
-    | MEDIUM | 26-50 | May need review |
-    | HIGH | 51-75 | Requires investigation |
-    | CRITICAL | 76-100 | Immediate action needed |
     
     ## Technology Stack
     
     - **Backend**: Python 3.11+ / FastAPI
     - **Frontend**: Streamlit
     - **Database**: PostgreSQL (SQLModel)
-    - **AI**: Azure OpenAI with Function Calling
+    - **AI**: Azure OpenAI / OpenAI / Anthropic / Ollama
     - **Infrastructure**: Azure Container Apps / Terraform
     - **Auth**: Azure Entra ID (mocked locally)
-    - **Observability**: Custom LLM tracing + Guardrails
+    
+    ## Access Control Model
+    
+    | Role | Can Analyze | See High Score | All Groups |
+    |------|-------------|----------------|------------|
+    | Admin | ✅ | ✅ | ✅ |
+    | Senior Analyst | ✅ | ✅ | ✅ |
+    | Analyst | ✅ | ✅ | ❌ (own group) |
+    | Viewer | ❌ | ❌ | ❌ (own group) |
+    
+    ## Score Levels
+    
+    | Level | Score Range | Meaning |
+    |-------|-------------|---------|
+    | LOW | 0-25 | Minimal significance |
+    | MEDIUM | 26-50 | Moderate significance |
+    | HIGH | 51-75 | High significance |
+    | CRITICAL | 76-100 | Critical, immediate review |
     """)
     
     # Show current user's permissions

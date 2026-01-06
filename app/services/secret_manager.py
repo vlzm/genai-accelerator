@@ -36,23 +36,23 @@ class Settings(BaseSettings):
     # Database settings
     database_host: str = "localhost"
     database_port: int = 5432
-    database_name: str = "kyc_db"
+    database_name: str = "app_db"
     database_user: str = "postgres"
     database_password: str = ""
     
     # LLM Provider selection
     # Options: azure, openai, anthropic, ollama
-    llm_provider: str = "azure"
+    llm_provider: str = "openai"
     
     # Azure OpenAI settings (provider: azure)
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
     azure_openai_deployment_name: str = "gpt-4.1"
-    azure_openai_api_version: str = "2024-12-01-preview"  # Latest API version
+    azure_openai_api_version: str = "2024-12-01-preview"
     
     # OpenAI settings (provider: openai)
     openai_api_key: str = ""
-    openai_model: str = "gpt-4.1"  # Modern model with good tool calling support
+    openai_model: str = "gpt-4.1"
     
     # Anthropic settings (provider: anthropic)
     anthropic_api_key: str = ""
@@ -64,11 +64,6 @@ class Settings(BaseSettings):
     
     # Azure Key Vault (for CLOUD mode)
     azure_keyvault_url: str = ""
-    
-    # RAG / Vector Search (can be disabled)
-    rag_enabled: bool = True
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 1536
     
     @property
     def is_local(self) -> bool:
@@ -174,4 +169,3 @@ def get_openai_api_key() -> str:
     if not api_key:
         raise ValueError("AZURE-OPENAI-API-KEY not found in Key Vault")
     return api_key
-

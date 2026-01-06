@@ -1,77 +1,63 @@
 """
-Database models for KYC/AML Analyzer.
+Database models for Azure GenAI Accelerator.
 
 Uses SQLModel for ORM with Pydantic validation.
-Supports optional RAG with pgvector for similarity search.
+Generic models for any AI-powered analysis use case.
 """
 
 from datetime import datetime
-from decimal import Decimal
-from typing import Optional, List, Any
+from typing import Optional, List
 
 from pydantic import field_validator
 from sqlmodel import Field, SQLModel, Relationship, JSON, Column
 
-# Import pgvector only if available (RAG feature)
-try:
-    from pgvector.sqlalchemy import Vector
-    PGVECTOR_AVAILABLE = True
-except ImportError:
-    PGVECTOR_AVAILABLE = False
-    Vector = None  # type: ignore
 
-
-class Transaction(SQLModel, table=True):
+class Request(SQLModel, table=True):
     """
-    Represents a financial transaction to be analyzed.
+    Represents an input request to be analyzed.
     
-    The comment field may contain PII and should be handled securely.
+    Generic model that can hold any text input with optional context.
     """
-    __tablename__ = "transactions"
+    __tablename__ = "requests"
     __table_args__ = {"extend_existing": True}
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    comment: str = Field(max_length=2000, description="Transaction comment (may contain PII)")
-    amount: Decimal = Field(decimal_places=2, description="Transaction amount")
-    currency: str = Field(default="USD", max_length=3)
-    sender_id: str = Field(max_length=100, description="Sender identifier")
-    receiver_id: str = Field(max_length=100, description="Receiver identifier")
+    input_text: str = Field(max_length=5000, description="Primary input text for analysis")
+    context: Optional[str] = Field(default=None, max_length=2000, description="Additional context")
     
     # ABAC fields for access control
-    region: str = Field(default="Global", max_length=20, description="Geographic region for ABAC")
-    created_by_user_id: Optional[str] = Field(default=None, max_length=50, description="User who created this transaction")
+    group: str = Field(default="default", max_length=50, description="Group for ABAC filtering")
+    created_by_user_id: Optional[str] = Field(default=None, max_length=50, description="User who created this request")
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationship to risk reports
-    risk_reports: list["RiskReport"] = Relationship(back_populates="transaction")
-    
-    @field_validator("currency")
-    @classmethod
-    def validate_currency(cls, v: str) -> str:
-        return v.upper()
+    # Relationship to analysis results
+    results: list["AnalysisResult"] = Relationship(back_populates="request")
 
 
-class RiskReport(SQLModel, table=True):
+class AnalysisResult(SQLModel, table=True):
     """
-    AI-generated risk assessment for a transaction.
+    AI-generated analysis result for a request.
     
-    Contains the LLM analysis results including risk score and factors.
+    Contains the LLM analysis results including score and categories.
     Includes observability fields for evaluation and improvement.
     """
-    __tablename__ = "risk_reports"
+    __tablename__ = "analysis_results"
     __table_args__ = {"extend_existing": True}
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    transaction_id: int = Field(foreign_key="transactions.id", index=True)
-    risk_score: int = Field(ge=0, le=100, description="Risk score from 0 (safe) to 100 (critical)")
-    risk_level: str = Field(max_length=20, description="LOW, MEDIUM, HIGH, CRITICAL")
-    risk_factors: list[str] = Field(default=[], sa_column=Column(JSON))
-    llm_reasoning: str = Field(description="LLM explanation of the risk assessment")
+    request_id: int = Field(foreign_key="requests.id", index=True)
+    
+    # Analysis output - generic fields
+    score: int = Field(ge=0, le=100, description="Analysis score from 0 to 100")
+    categories: list[str] = Field(default=[], sa_column=Column(JSON), description="Identified categories/tags")
+    summary: str = Field(description="LLM summary/reasoning")
+    processed_content: Optional[str] = Field(default=None, description="Processed/transformed content")
+    
     model_version: str = Field(max_length=50, description="Model used for analysis")
     
     # ABAC fields for access control (denormalized for query performance)
-    region: str = Field(default="Global", max_length=20, description="Region (copied from transaction)")
+    group: str = Field(default="default", max_length=50, description="Group (copied from request)")
     analyzed_by_user_id: Optional[str] = Field(default=None, max_length=50, description="User who triggered analysis")
     
     # OBSERVABILITY FIELDS - LLM Tracing
@@ -83,50 +69,28 @@ class RiskReport(SQLModel, table=True):
     feedback_by_user_id: Optional[str] = Field(default=None, max_length=50, description="User who provided feedback")
     feedback_at: Optional[datetime] = Field(default=None, description="When feedback was provided")
     
-    # GUARDRAIL FLAGS - Automated safety checks
-    guardrail_status: str = Field(default="PASS", max_length=30, description="PASS, FAIL_PII_LEAKAGE, FAIL_LOW_QUALITY, etc.")
-    guardrail_details: Optional[str] = Field(default=None, max_length=500, description="Details if guardrail failed")
-    
-    # RAG / VECTOR SEARCH - Embedding for similarity search
-    # Note: Only populated when RAG_ENABLED=true, otherwise null
-    # Using raw List[float] - the actual Vector type is applied via sa_column
-    embedding: Optional[List[float]] = Field(
-        default=None,
-        sa_column=Column(Vector(1536)) if PGVECTOR_AVAILABLE else None,
-        description="Vector embedding for similarity search (1536 dimensions for text-embedding-3-small)"
-    )
+    # VALIDATION FLAGS - Automated safety checks
+    validation_status: str = Field(default="PASS", max_length=30, description="PASS, FAIL_LOW_QUALITY, etc.")
+    validation_details: Optional[str] = Field(default=None, max_length=500, description="Details if validation failed")
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationship back to transaction
-    transaction: Optional[Transaction] = Relationship(back_populates="risk_reports")
-    
-    @field_validator("risk_level")
-    @classmethod
-    def validate_risk_level(cls, v: str) -> str:
-        allowed = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
-        v_upper = v.upper()
-        if v_upper not in allowed:
-            raise ValueError(f"risk_level must be one of {allowed}")
-        return v_upper
+    # Relationship back to request
+    request: Optional[Request] = Relationship(back_populates="results")
 
 
 # Pydantic models for API/Service layer (not stored in DB)
 
-class TransactionCreate(SQLModel):
-    """Input model for creating a new transaction."""
-    comment: str = Field(max_length=2000)
-    amount: Decimal = Field(decimal_places=2)
-    currency: str = Field(default="USD", max_length=3)
-    sender_id: str = Field(max_length=100)
-    receiver_id: str = Field(max_length=100)
-    region: str = Field(default="Global", max_length=20)
+class RequestCreate(SQLModel):
+    """Input model for creating a new request."""
+    input_text: str = Field(max_length=5000)
+    context: Optional[str] = Field(default=None, max_length=2000)
+    group: str = Field(default="default", max_length=50)
 
 
-class RiskAnalysisResult(SQLModel):
-    """Output model from LLM risk analysis."""
-    risk_score: int = Field(ge=0, le=100)
-    risk_level: str
-    risk_factors: list[str]
-    reasoning: str
-
+class AnalysisOutput(SQLModel):
+    """Output model from LLM analysis."""
+    score: int = Field(ge=0, le=100)
+    categories: list[str]
+    summary: str
+    processed_content: Optional[str] = None

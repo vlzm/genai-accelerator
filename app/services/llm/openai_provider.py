@@ -5,7 +5,7 @@ Standard OpenAI API (not Azure) for development and testing.
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from openai import OpenAI, APIError, RateLimitError, BadRequestError
 from tenacity import (
@@ -24,6 +24,7 @@ JSON_MODE_MODELS = {
     "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-turbo-preview",
     "gpt-3.5-turbo-1106", "gpt-3.5-turbo-0125",
     "gpt-4-1106-preview", "gpt-4-0125-preview",
+    "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
 }
 
 
@@ -35,7 +36,14 @@ class OpenAIProvider(BaseLLMProvider):
     Automatically detects if model supports JSON mode.
     """
     
-    def __init__(self, api_key: str, model: str = "gpt-4"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-4",
+        system_prompt: Optional[str] = None,
+    ):
+        super().__init__(system_prompt=system_prompt)
+        
         if not api_key:
             raise ValueError("OpenAI API key not configured")
         
@@ -73,7 +81,7 @@ class OpenAIProvider(BaseLLMProvider):
                 "model": self.model,
                 "messages": messages,
                 "temperature": temperature,
-                "max_completion_tokens": max_tokens,  # New API parameter for modern models
+                "max_completion_tokens": max_tokens,
             }
             
             # Add JSON mode if supported
@@ -102,63 +110,5 @@ class OpenAIProvider(BaseLLMProvider):
             logger.error(f"OpenAI API error: {e}")
             raise
     
-    @retry(
-        retry=retry_if_exception_type(RateLimitError),
-        wait=wait_exponential(multiplier=1, min=4, max=60),
-        stop=stop_after_attempt(3),
-    )
-    def _call_api_with_tools(
-        self,
-        messages: list[dict],
-        tools: list[dict],
-        temperature: float = 0.1,
-        max_tokens: int = 1000,
-    ) -> dict:
-        """
-        Makes API call with function/tool calling support.
-        
-        Returns dict with 'content' and optional 'tool_calls'.
-        """
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                temperature=temperature,
-                max_completion_tokens=max_tokens,  # New API parameter for modern models
-            )
-            
-            message = response.choices[0].message
-            
-            result = {
-                "content": message.content,
-                "tool_calls": None,
-            }
-            
-            # Extract tool calls if present
-            if message.tool_calls:
-                result["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": tc.type,
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in message.tool_calls
-                ]
-            
-            return result
-            
-        except RateLimitError:
-            logger.warning("OpenAI rate limit hit, will retry...")
-            raise
-        except APIError as e:
-            logger.error(f"OpenAI API error: {e}")
-            raise
-    
     def get_model_version(self) -> str:
         return self._model_version
-
