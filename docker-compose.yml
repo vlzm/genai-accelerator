@@ -12,6 +12,10 @@ services:
     container_name: genai-app
     ports:
       - "8501:8501"
+    volumes:
+      # Mount app code for hot-reload during development
+      # Changes to code will be reflected immediately without rebuild
+      - ./app:/app/app:ro
     environment:
       # Environment mode
       ENV: LOCAL
@@ -56,6 +60,10 @@ services:
     container_name: genai-api
     ports:
       - "8000:8000"
+    volumes:
+      # Mount app code for hot-reload during development
+      # Changes to code will be reflected immediately without rebuild
+      - ./app:/app/app:ro
     environment:
       # Environment mode
       ENV: LOCAL

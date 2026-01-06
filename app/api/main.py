@@ -6,7 +6,6 @@ Designed for integration with external systems and microservices.
 
 Run with: uvicorn app.api.main:app --host 0.0.0.0 --port 8000
 """
-
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
