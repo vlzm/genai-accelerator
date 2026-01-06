@@ -6,12 +6,13 @@ This abstraction allows swapping providers without changing business logic.
 
 Supports two modes:
 1. Simple mode: Direct JSON response (analyze)
-2. Agent mode: Tool-calling with grounding (analyze_with_tools) - to be implemented
+2. Agent mode: Tool-calling with grounding (analyze_with_tools)
 """
 
 import json
 import logging
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel
@@ -61,9 +62,12 @@ class BaseLLMProvider(ABC):
     
     All providers must implement:
     - _call_api: Raw API call with retry logic
+    - _call_api_with_tools: API call with function calling support  
     - get_model_version: Returns model identifier for audit
     
-    Provides the analyze method for text analysis.
+    Provides two analysis modes:
+    - analyze(): Simple direct analysis (no tools)
+    - analyze_with_tools(): Agent mode with tool calling
     """
     
     def __init__(self, system_prompt: Optional[str] = None):
@@ -89,7 +93,7 @@ class BaseLLMProvider(ABC):
         max_tokens: int = 1000,
     ) -> str:
         """
-        Makes API call to the LLM provider.
+        Makes API call to the LLM provider (simple mode).
         
         Args:
             messages: Chat messages in OpenAI format
@@ -98,6 +102,37 @@ class BaseLLMProvider(ABC):
             
         Returns:
             Raw response content string (should be valid JSON)
+        """
+        pass
+    
+    @abstractmethod
+    def _call_api_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        temperature: float = 0.1,
+        max_tokens: int = 1000,
+    ) -> dict:
+        """
+        Makes API call with tool/function calling support.
+        
+        Args:
+            messages: Chat messages in OpenAI format
+            tools: List of tool definitions (OpenAI format)
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens in response
+            
+        Returns:
+            Response dict with structure:
+            {
+                "content": str | None,
+                "tool_calls": [
+                    {
+                        "id": str,
+                        "function": {"name": str, "arguments": str}
+                    }
+                ] | None
+            }
         """
         pass
     
@@ -136,7 +171,7 @@ class BaseLLMProvider(ABC):
         context: Optional[str] = None,
     ) -> LLMResponse:
         """
-        Analyzes input text with optional context.
+        Analyzes input text with optional context (simple mode).
         
         Args:
             input_text: Primary text to analyze
@@ -145,8 +180,6 @@ class BaseLLMProvider(ABC):
         Returns:
             Structured LLMResponse with analysis results
         """
-        from datetime import datetime
-        
         # Build user message
         user_message = f"Please analyze the following input:\n\n{input_text}"
         if context:
@@ -162,6 +195,7 @@ class BaseLLMProvider(ABC):
         trace = {
             "started_at": datetime.utcnow().isoformat(),
             "model": self.get_model_version(),
+            "mode": "simple",
             "input": {
                 "input_text": input_text[:500] + "..." if len(input_text) > 500 else input_text,
                 "context": context[:200] + "..." if context and len(context) > 200 else context,
@@ -182,56 +216,155 @@ class BaseLLMProvider(ABC):
             trace["error"] = str(e)
             trace["completed_at"] = datetime.utcnow().isoformat()
             raise
-
-
-# ============================================================================
-# EXAMPLE: Tool-based Analysis (Agent Mode)
-# ============================================================================
-# Uncomment and customize the code below to enable function calling / tools.
-# This is useful when you need to ground LLM decisions in external data sources.
-#
-# Example use cases:
-# - Checking databases or APIs for entity verification
-# - Looking up reference data
-# - Performing calculations or validations
-#
-# def _call_api_with_tools(
-#     self,
-#     messages: list[dict],
-#     tools: list[dict],
-#     temperature: float = 0.1,
-#     max_tokens: int = 1000,
-# ) -> dict:
-#     """
-#     Makes API call with tool/function calling support.
-#     
-#     Args:
-#         messages: Chat messages in OpenAI format
-#         tools: List of tool definitions
-#         temperature: Sampling temperature
-#         max_tokens: Maximum tokens in response
-#         
-#     Returns:
-#         Response dict with 'content' and optional 'tool_calls'
-#     """
-#     pass
-#
-# EXAMPLE_TOOL_DEFINITIONS = [
-#     {
-#         "type": "function",
-#         "function": {
-#             "name": "lookup_database",
-#             "description": "Look up information in the database",
-#             "parameters": {
-#                 "type": "object",
-#                 "properties": {
-#                     "query": {
-#                         "type": "string",
-#                         "description": "The search query",
-#                     }
-#                 },
-#                 "required": ["query"],
-#             },
-#         },
-#     },
-# ]
+    
+    def analyze_with_tools(
+        self,
+        input_text: str,
+        context: Optional[str] = None,
+        agent_prompt: Optional[str] = None,
+        max_iterations: int = 8,
+    ) -> LLMResponse:
+        """
+        Analyzes input using agent mode with tool calling.
+        
+        The agent loop:
+        1. LLM receives input and decides which tools to call
+        2. Tools are executed and results returned to LLM
+        3. Loop continues until LLM provides final JSON answer
+        
+        Args:
+            input_text: Primary text to analyze
+            context: Optional additional context
+            agent_prompt: Custom system prompt (overrides default)
+            max_iterations: Maximum tool-calling iterations
+            
+        Returns:
+            Structured LLMResponse with analysis and tool usage trace
+        """
+        from app.services.tools import TOOL_DEFINITIONS, execute_tool
+        
+        # Fall back to simple mode if no tools defined
+        if not TOOL_DEFINITIONS:
+            logger.warning("No tools defined, falling back to simple analysis")
+            return self.analyze(input_text, context)
+        
+        system_prompt = agent_prompt or self.system_prompt
+        
+        # Initialize trace
+        trace = {
+            "started_at": datetime.utcnow().isoformat(),
+            "model": self.get_model_version(),
+            "mode": "agent",
+            "input": {
+                "input_text": input_text[:500] + "..." if len(input_text) > 500 else input_text,
+                "context": context[:200] + "..." if context and len(context) > 200 else context,
+            },
+            "tool_calls": [],
+            "total_iterations": 0,
+        }
+        
+        # Build user message
+        user_message = f"Please analyze the following input:\n\n{input_text}"
+        if context:
+            user_message += f"\n\nAdditional Context:\n{context}"
+        user_message += "\n\nUse the available tools to gather information, then provide your final analysis in JSON format."
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+        
+        tools_used = []
+        
+        # Agent loop
+        for iteration in range(max_iterations):
+            trace["total_iterations"] = iteration + 1
+            
+            response = self._call_api_with_tools(
+                messages=messages,
+                tools=TOOL_DEFINITIONS,
+                temperature=0.1,
+                max_tokens=1500,
+            )
+            
+            # Check if LLM wants to call tools
+            if response.get("tool_calls"):
+                messages.append({
+                    "role": "assistant",
+                    "content": response.get("content") or "",
+                    "tool_calls": response["tool_calls"],
+                })
+                
+                # Execute each tool
+                for tool_call in response["tool_calls"]:
+                    func_name = tool_call["function"]["name"]
+                    func_args = json.loads(tool_call["function"]["arguments"])
+                    
+                    logger.info(f"Executing tool: {func_name}")
+                    tools_used.append(func_name)
+                    
+                    try:
+                        result = execute_tool(func_name, func_args)
+                        trace["tool_calls"].append({
+                            "tool": func_name,
+                            "arguments": func_args,
+                            "result": result[:500] if len(result) > 500 else result,
+                            "status": "success",
+                        })
+                    except Exception as e:
+                        logger.error(f"Tool execution failed: {e}")
+                        result = json.dumps({"error": str(e)})
+                        trace["tool_calls"].append({
+                            "tool": func_name,
+                            "arguments": func_args,
+                            "error": str(e),
+                            "status": "error",
+                        })
+                    
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "name": func_name,
+                        "content": result,
+                    })
+            else:
+                # No tool calls - parse final response
+                final_content = response.get("content", "")
+                if final_content:
+                    try:
+                        result = self._parse_llm_response(final_content)
+                        result.tools_used = list(set(tools_used))
+                        trace["completed_at"] = datetime.utcnow().isoformat()
+                        result.trace = trace
+                        return result
+                    except ValueError:
+                        # Ask for proper JSON
+                        messages.append({"role": "assistant", "content": final_content})
+                        messages.append({
+                            "role": "user",
+                            "content": "Please provide your response in the required JSON format.",
+                        })
+                        continue
+                
+                # Empty response - request final assessment
+                if tools_used:
+                    messages.append({
+                        "role": "user",
+                        "content": "Based on the tool results, provide your final analysis in JSON format.",
+                    })
+                    continue
+                else:
+                    raise ValueError("LLM returned empty response without calling tools")
+        
+        # Fallback if max iterations exceeded
+        logger.warning(f"Agent loop exceeded {max_iterations} iterations")
+        trace["completed_at"] = datetime.utcnow().isoformat()
+        trace["error"] = "max_iterations_exceeded"
+        
+        return LLMResponse(
+            score=50,
+            categories=["MANUAL_REVIEW_REQUIRED"],
+            reasoning="Analysis incomplete - max iterations exceeded. Manual review required.",
+            tools_used=list(set(tools_used)),
+            trace=trace,
+        )
