@@ -49,6 +49,9 @@ ENV PATH=/home/appuser/.local/bin:$PATH \
 # Switch to non-root user (security best practice)
 USER appuser
 
+# Validate imports at build time (fail fast if there are import errors)
+RUN python -c "import app.main" || (echo "ERROR: Import validation failed. Check your code for missing dependencies or syntax errors." && exit 1)
+
 # Expose Streamlit port
 EXPOSE 8501
 
