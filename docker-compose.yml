@@ -1,3 +1,5 @@
+name: genai-accelerator
+
 services:
   # ============================================
   # Streamlit UI
@@ -6,6 +8,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: genai-accelerator-app
     container_name: genai-app
     ports:
       - "8501:8501"
@@ -49,6 +52,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+    image: genai-accelerator-api
     container_name: genai-api
     ports:
       - "8000:8000"
