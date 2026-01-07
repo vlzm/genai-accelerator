@@ -24,3 +24,6 @@ pydantic-settings>=2.1.0
 # Utilities
 python-dotenv>=1.0.0
 tenacity>=8.2.3
+
+# Development / Testing
+ipykernel>=6.29.0
