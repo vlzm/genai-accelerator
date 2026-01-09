@@ -156,7 +156,7 @@ class AnthropicProvider(BaseLLMProvider):
                 if block.type == "text":
                     text_parts.append(block.text)
                 elif block.type == "tool_use":
-                    tool_calls.append({"id": block.id, "function": {"name": block.name, "arguments": json.dumps(block.input)}})
+                    tool_calls.append({"id": block.id, "type": "function", "function": {"name": block.name, "arguments": json.dumps(block.input)}})
             
             if text_parts:
                 result["content"] = "\n".join(text_parts)

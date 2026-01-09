@@ -2,19 +2,19 @@
 Tools module for LLM Function Calling (Agent Mode).
 
 This module provides the infrastructure for tool-based analysis.
-By default, no tools are enabled (TOOL_DEFINITIONS is empty).
+Tools allow the LLM to perform actions and retrieve data during analysis.
 
-To enable tools for your use case:
+Available tools:
+- get_current_time: Returns current date/time
+- calculate: Performs arithmetic calculations
+- lookup_database: Searches mock database (demo)
+
+To add custom tools:
 1. Edit definitions.py
-2. Uncomment/create your tool definitions
-3. Set TOOL_DEFINITIONS to your tool list
-4. Use analyze_with_tools() instead of analyze()
-
-Example use cases:
-- Database lookups for entity verification
-- API calls to external services
-- Validation against reference data
-- Calculations or transformations
+2. Add tool definition (OpenAI format) to TOOL_DEFINITIONS
+3. Implement the tool function
+4. Register in TOOL_FUNCTIONS dict
+5. Use analyze_with_tools() method
 """
 
 from app.services.tools.definitions import (

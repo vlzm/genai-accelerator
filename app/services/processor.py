@@ -41,7 +41,7 @@ from app.services.auth_mock import (
     Group,
 )
 from app.services.validation import run_all_validations
-from app.services.rag_service import RAGService
+from app.services.rag_service import RAGService, SimilarCaseResult, RAGTrace
 
 logger = logging.getLogger(__name__)
 
@@ -534,9 +534,11 @@ class Processor:
         Gets results that need human review.
         
         Prioritizes:
-        1. Results with validation failures
-        2. Results without feedback
-        3. High-score results
+        1. Results with validation failures (first priority)
+        2. All results without feedback (for observability, regardless of score)
+        
+        This ensures full observability - all results are available for review
+        and feedback collection, not just high-score ones.
         
         Args:
             limit: Maximum number of results to return
@@ -561,7 +563,7 @@ class Processor:
         if remaining <= 0:
             return validation_failed
         
-        # Get high-score results without feedback
+        # Get all results without feedback (for observability)
         existing_ids = [r.id for r in validation_failed]
         statement = (
             select(AnalysisResult)
@@ -569,24 +571,24 @@ class Processor:
                 and_(
                     AnalysisResult.human_feedback.is_(None),
                     AnalysisResult.validation_status == "PASS",
-                    AnalysisResult.score >= 50,
                     AnalysisResult.id.notin_(existing_ids) if existing_ids else True,
                 )
             )
-            .order_by(AnalysisResult.score.desc())
+            .order_by(AnalysisResult.created_at.desc())
         )
         statement = self._apply_abac_filter(statement)
         statement = statement.limit(remaining)
         
-        high_score = list(self.session.exec(statement).all())
+        pending_feedback = list(self.session.exec(statement).all())
         
-        return validation_failed + high_score
+        return validation_failed + pending_feedback
 
     def find_similar_cases(
         self,
         result: AnalysisResult,
         limit: int = 3,
-    ) -> list[AnalysisResult]:
+        min_similarity: float = 0.3,
+    ) -> tuple[list[SimilarCaseResult], RAGTrace]:
         """
         Finds similar historical cases using RAG.
         
@@ -596,29 +598,39 @@ class Processor:
         Args:
             result: Current AnalysisResult to find similar cases for
             limit: Maximum number of similar cases to return
+            min_similarity: Minimum similarity threshold (0.0-1.0, default 30%)
             
         Returns:
-            List of similar AnalysisResults (empty if RAG disabled)
+            Tuple of (list of SimilarCaseResult with scores, RAGTrace for debugging)
         """
+        trace = RAGTrace(enabled=self.rag_service.is_enabled)
+        
         if not self.rag_service.is_enabled:
-            return []
+            return [], trace
         
         self._check_view_permission()
         
         try:
-            similar = self.rag_service.find_similar_to_result(result, limit=limit)
+            similar, trace = self.rag_service.find_similar_to_result(
+                result, 
+                limit=limit,
+                min_similarity=min_similarity,
+            )
             
             # Apply ABAC filter to results
             if self.user:
-                similar = [
-                    r for r in similar
-                    if self.user.can_access_group(r.group)
+                filtered = [
+                    s for s in similar
+                    if self.user.can_access_group(s.result.group)
                 ]
+                trace.results_after_filter = len(filtered)
+                return filtered, trace
             
-            return similar
+            return similar, trace
         except Exception as e:
+            trace.search_error = str(e)
             logger.warning(f"Similar case search failed: {e}")
-            return []
+            return [], trace
     
     def is_rag_enabled(self) -> bool:
         """Check if RAG feature is enabled."""

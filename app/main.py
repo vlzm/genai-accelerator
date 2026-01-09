@@ -17,7 +17,7 @@ Run with: streamlit run app/main.py
 import streamlit as st
 
 from app.database import init_db, get_session
-from app.models import RequestCreate
+from app.models import RequestCreate, AnalysisResult
 from app.services.processor import Processor
 from app.services.auth_mock import (
     get_all_users,
@@ -174,6 +174,129 @@ def render_feedback_section(result_id: int, current_user: UserProfile):
                         st.session_state[f"show_feedback_form_{result_id}"] = False
                     except Exception as e:
                         st.error(f"Failed to save feedback: {e}")
+
+
+def render_similar_cases(result: AnalysisResult, current_user: UserProfile):
+    """
+    Render similar historical cases using RAG.
+    
+    Displays cases with similar content/outcomes to help users
+    make informed decisions based on historical patterns.
+    Includes RAG trace for debugging and transparency.
+    
+    Args:
+        result: The current AnalysisResult to find similar cases for
+        current_user: Current user for ABAC filtering
+    """
+    with st.expander("📚 Similar Historical Cases (RAG)", expanded=False):
+        try:
+            with get_session() as session:
+                processor = Processor(session, user=current_user)
+                
+                # Check if RAG is enabled
+                if not processor.is_rag_enabled():
+                    st.info(
+                        "🔌 **RAG is disabled.**\n\n"
+                        "Set `RAG_ENABLED=true` in environment to enable "
+                        "similar case search using vector embeddings."
+                    )
+                    return
+                
+                # Find similar cases with trace
+                similar_cases, rag_trace = processor.find_similar_cases(
+                    result, 
+                    limit=3,
+                    min_similarity=0.3,  # 30% minimum similarity threshold
+                )
+                
+                if not similar_cases:
+                    st.info(
+                        "No similar cases found above the similarity threshold (30%).\n\n"
+                        "Similar cases will appear here as more analyses are performed "
+                        "and embeddings are generated."
+                    )
+                    # Show trace even when no results for debugging
+                    with st.expander("🔍 RAG Trace (Debug)", expanded=False):
+                        st.json(rag_trace.to_dict())
+                    return
+                
+                st.caption(
+                    f"Found **{len(similar_cases)}** similar case(s) "
+                    f"(threshold: ≥30% similarity)"
+                )
+                
+                # Display each similar case with similarity score
+                for i, similar_result in enumerate(similar_cases, 1):
+                    similar = similar_result.result
+                    similarity_pct = similar_result.similarity_pct
+                    
+                    score_color = get_score_color(similar.score)
+                    score_level = get_score_level(similar.score)
+                    
+                    # Color for similarity badge
+                    if similarity_pct >= 70:
+                        sim_color = "#28a745"  # Green - high similarity
+                    elif similarity_pct >= 50:
+                        sim_color = "#ffc107"  # Yellow - medium
+                    else:
+                        sim_color = "#6c757d"  # Gray - low
+                    
+                    st.markdown(f"---")
+                    
+                    # Header with similarity badge
+                    st.markdown(
+                        f"**Case #{similar.id}** | "
+                        f'<span style="background-color: {sim_color}; color: white; '
+                        f'padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">'
+                        f'{similarity_pct:.0f}% similar</span> | '
+                        f"Score: **{similar.score}** ({score_level})",
+                        unsafe_allow_html=True,
+                    )
+                    
+                    col1, col2 = st.columns([1, 3])
+                    
+                    with col1:
+                        st.markdown(
+                            f'<div style="background-color: {score_color}22; '
+                            f'border-left: 3px solid {score_color}; padding: 0.5rem; '
+                            f'border-radius: 0.25rem;">'
+                            f'<strong style="color: {score_color};">{similar.score}</strong>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.caption(f"Group: {similar.group}")
+                        if similar.created_at:
+                            st.caption(f"{similar.created_at.strftime('%Y-%m-%d')}")
+                    
+                    with col2:
+                        # Categories
+                        if similar.categories:
+                            cats = ", ".join(similar.categories[:3])
+                            if len(similar.categories) > 3:
+                                cats += f" (+{len(similar.categories) - 3} more)"
+                            st.markdown(f"**Categories:** {cats}")
+                        
+                        # Truncated summary
+                        summary_preview = similar.summary[:200]
+                        if len(similar.summary) > 200:
+                            summary_preview += "..."
+                        st.markdown(f"*{summary_preview}*")
+                        
+                        # Feedback status if available
+                        if similar.human_feedback is not None:
+                            feedback_icon = "👍" if similar.human_feedback else "👎"
+                            st.caption(f"Human verdict: {feedback_icon}")
+                
+                # RAG Trace for debugging
+                with st.expander("🔍 RAG Trace (Debug)", expanded=False):
+                    st.caption(
+                        "Details of how similar cases were found. "
+                        "Shows embedding model, similarity scores, and filtering."
+                    )
+                    st.json(rag_trace.to_dict())
+                
+        except Exception as e:
+            st.warning(f"⚠️ Could not load similar cases: {e}")
 
 
 def init_session_state():
@@ -386,6 +509,9 @@ def render_new_analysis(current_user: UserProfile):
                 st.markdown("---")
                 render_feedback_section(result.id, current_user)
                 
+                # Similar historical cases (RAG)
+                render_similar_cases(result, current_user)
+                
                 # Request details
                 with st.expander("📄 Request Details"):
                     st.json({
@@ -477,6 +603,9 @@ def render_dashboard(current_user: UserProfile):
                                 st.markdown(f"- {cat}")
                             st.write("**AI Summary:**")
                             st.markdown(result.summary)
+                        
+                        # Similar historical cases (RAG)
+                        render_similar_cases(result, current_user)
             else:
                 st.info(
                     "No results visible with your current access level.\n\n"
@@ -511,7 +640,7 @@ def render_evaluation(current_user: UserProfile):
     This dashboard provides visibility into model quality through:
     - **Human Feedback Statistics** - accuracy based on expert verdicts
     - **Validation Metrics** - automated safety check results
-    - **Results Needing Review** - prioritized queue for expert review
+    - **Results Needing Review** - all results requiring review for full observability
     """)
     
     try:
@@ -601,7 +730,8 @@ def render_evaluation(current_user: UserProfile):
             st.subheader("📋 Results Needing Review")
             
             st.caption(
-                "Prioritized queue: validation failures first, then high-score results without feedback."
+                "Prioritized queue: validation failures first, then all results without feedback "
+                "(for full observability, regardless of score)."
             )
             
             results_to_review = processor.get_results_needing_review(limit=10)
@@ -646,6 +776,9 @@ def render_evaluation(current_user: UserProfile):
                         # Feedback buttons
                         st.markdown("---")
                         render_feedback_section(result.id, current_user)
+                        
+                        # Similar historical cases (RAG)
+                        render_similar_cases(result, current_user)
                         
                         # Trace viewer
                         if result.llm_trace:
