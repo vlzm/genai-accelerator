@@ -50,6 +50,10 @@ class AnalysisResult(SQLModel, table=True):
     
     Contains the LLM analysis results including score and categories.
     Includes observability fields for evaluation and improvement.
+    
+    Supports two modes:
+    - "analysis": Full scoring mode with score, categories, and summary
+    - "chat": Conversational mode with only summary (score/categories are None/empty)
     """
     __tablename__ = "analysis_results"
     __table_args__ = {"extend_existing": True}
@@ -57,10 +61,13 @@ class AnalysisResult(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     request_id: int = Field(foreign_key="requests.id", index=True)
     
-    # Analysis output - generic fields
-    score: int = Field(ge=0, le=100, description="Analysis score from 0 to 100")
+    # Result type - determines how UI renders the response
+    result_type: str = Field(default="analysis", max_length=50, description="analysis | chat")
+    
+    # Analysis output - generic fields (score is Optional for chat mode)
+    score: Optional[int] = Field(default=None, ge=0, le=100, description="Analysis score from 0 to 100 (None in chat mode)")
     categories: list[str] = Field(default=[], sa_column=Column(JSON), description="Identified categories/tags")
-    summary: str = Field(description="LLM summary/reasoning")
+    summary: str = Field(description="LLM summary/reasoning (or chat response)")
     processed_content: Optional[str] = Field(default=None, description="Processed/transformed content")
     
     model_version: str = Field(max_length=50, description="Model used for analysis")
@@ -108,7 +115,8 @@ class RequestCreate(SQLModel):
 
 class AnalysisOutput(SQLModel):
     """Output model from LLM analysis."""
-    score: int = Field(ge=0, le=100)
-    categories: list[str]
+    score: Optional[int] = Field(default=None, ge=0, le=100)
+    categories: list[str] = []
     summary: str
     processed_content: Optional[str] = None
+    result_type: str = "analysis"  # "analysis" | "chat"

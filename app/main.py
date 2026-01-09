@@ -84,8 +84,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def get_score_color(score: int) -> str:
+def get_score_color(score: int | None) -> str:
     """Returns color code for score level."""
+    if score is None:
+        return "#007bff"  # Blue for chat mode (no score)
     if score >= 76:
         return "#721c24"  # Critical
     elif score >= 51:
@@ -96,8 +98,10 @@ def get_score_color(score: int) -> str:
         return "#28a745"  # Low
 
 
-def get_score_level(score: int) -> str:
+def get_score_level(score: int | None) -> str:
     """Returns level string for score."""
+    if score is None:
+        return "CHAT"  # For chat mode
     if score >= 76:
         return "CRITICAL"
     elif score >= 51:
@@ -411,13 +415,22 @@ def render_new_analysis(current_user: UserProfile):
         st.info("💡 Try switching to 'Carol Analyst' or 'Alice Administrator' in the Identity Simulator.")
         return
     
-    st.markdown("Submit input data for AI-powered analysis.")
+    st.markdown("Submit input data for AI-powered analysis or chat with the AI assistant.")
     
     # Show user context
     st.info(
         f"📍 Logged in as **{current_user.username}** | "
         f"Group: **{current_user.group.value}**"
     )
+    
+    # Mode selector - outside form for dynamic UI updates
+    mode = st.radio(
+        "Mode",
+        ["📊 Analysis (Score)", "💬 Chat (Q&A)"],
+        horizontal=True,
+        help="Analysis mode provides a score and categories. Chat mode is for conversational Q&A.",
+    )
+    mode_key = "analysis" if "Analysis" in mode else "chat"
     
     with st.form("analysis_form"):
         # Group selector (ABAC)
@@ -428,30 +441,40 @@ def render_new_analysis(current_user: UserProfile):
             group = current_user.group.value
             st.text_input("Group", value=group, disabled=True)
         
+        # Dynamic placeholder based on mode
+        if mode_key == "chat":
+            input_placeholder = "Ask a question or describe what you need help with..."
+            input_label = "Your Message"
+        else:
+            input_placeholder = "Enter the text you want to analyze..."
+            input_label = "Input Data"
+        
         input_text = st.text_area(
-            "Input Data",
-            placeholder="Enter the text you want to analyze...",
+            input_label,
+            placeholder=input_placeholder,
             height=200,
             help="This text will be processed by the AI model",
         )
         
         context = st.text_area(
             "Additional Context (optional)",
-            placeholder="Any additional context or instructions for the analysis...",
+            placeholder="Any additional context or instructions...",
             height=100,
-            help="Optional context to help guide the analysis",
+            help="Optional context to help guide the response",
         )
         
-        submitted = st.form_submit_button("🔍 Process", use_container_width=True)
+        button_label = "💬 Send" if mode_key == "chat" else "🔍 Analyze"
+        submitted = st.form_submit_button(button_label, use_container_width=True)
     
     if submitted:
         # Validation
         if not input_text.strip():
-            st.error("Input data is required")
+            st.error("Input is required")
             return
         
         # Process request with user context
-        with st.spinner("🔄 Processing with AI..."):
+        spinner_text = "💬 Generating response..." if mode_key == "chat" else "🔄 Processing with AI..."
+        with st.spinner(spinner_text):
             try:
                 with get_session() as session:
                     # Pass current user to processor for ABAC
@@ -463,113 +486,153 @@ def render_new_analysis(current_user: UserProfile):
                         group=group,
                     )
                     
-                    request, result = processor.process_request(request_data)
+                    # Pass mode to processor
+                    request, result = processor.process_request(request_data, mode=mode_key)
                 
-                # Display results
-                st.success("✅ Analysis Complete!")
-                st.markdown("---")
+                # Store result in session_state for persistence across reruns
+                st.session_state.last_analysis_result = {
+                    "request_id": request.id,
+                    "result_id": result.id,
+                    "result_type": result.result_type,
+                    "score": result.score,
+                    "categories": result.categories,
+                    "summary": result.summary,
+                    "validation_status": result.validation_status,
+                    "validation_details": result.validation_details,
+                    "llm_trace": result.llm_trace,
+                    "group": request.group,
+                    "created_by": current_user.username,
+                    "created_at": request.created_at.isoformat(),
+                }
+                st.rerun()  # Rerun to display from session_state
                 
-                # Score display
-                col1, col2, col3 = st.columns([1, 2, 1])
-                
-                with col2:
-                    score_color = get_score_color(result.score)
-                    score_level = get_score_level(result.score)
-                    
-                    st.markdown(f"""
-                    <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, {score_color}22, {score_color}44); border-radius: 1rem; border: 2px solid {score_color};">
-                        <h1 style="color: {score_color}; margin: 0; font-size: 4rem;">{result.score}</h1>
-                        <h2 style="color: {score_color}; margin: 0.5rem 0;">{score_level}</h2>
-                        <p style="margin: 0; color: #666;">Analysis Score</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                st.markdown("---")
-                
-                # Categories
-                if result.categories:
-                    st.subheader("🏷️ Categories Identified")
-                    for category in result.categories:
-                        st.markdown(f"- {category}")
-                else:
-                    st.info("No specific categories identified.")
-                
-                # Summary/Reasoning
-                st.subheader("🤖 AI Analysis")
-                st.markdown(result.summary)
-                
-                # Validation status
-                if result.validation_status != "PASS":
-                    st.warning(
-                        f"⚠️ **Validation Alert**: {result.validation_status}\n\n"
-                        f"{result.validation_details or ''}"
-                    )
-                
-                # Human Feedback Loop section
-                st.markdown("---")
-                render_feedback_section(result.id, current_user)
-                
-                # Similar historical cases (RAG)
-                render_similar_cases(result, current_user)
-                
-                # Request details
-                with st.expander("📄 Request Details"):
-                    st.json({
-                        "request_id": request.id,
-                        "group": request.group,
-                        "created_by": current_user.username,
-                        "created_at": request.created_at.isoformat(),
-                    })
-                
-                # Tools & Observability
-                if result.llm_trace and result.llm_trace.get("tool_calls"):
-                    with st.expander("🔧 Tools Used (Agent Mode)", expanded=True):
-                        trace = result.llm_trace
-                        st.caption(
-                            f"**Mode:** {trace.get('mode', 'unknown')} | "
-                            f"**Iterations:** {trace.get('total_iterations', 0)}"
-                        )
-                        st.markdown("---")
-                        
-                        for tc in trace["tool_calls"]:
-                            tool_name = tc.get("tool", "unknown")
-                            status = tc.get("status", "unknown")
-                            status_icon = "✅" if status == "success" else "❌"
-                            
-                            col1, col2 = st.columns([1, 2])
-                            with col1:
-                                st.markdown(f"**{status_icon} {tool_name}**")
-                            with col2:
-                                if tc.get("arguments"):
-                                    st.code(str(tc["arguments"]), language="json")
-                            
-                            if tc.get("result"):
-                                result_preview = str(tc["result"])
-                                if len(result_preview) > 300:
-                                    result_preview = result_preview[:300] + "..."
-                                st.info(f"📤 Result: {result_preview}")
-                            
-                            if tc.get("error"):
-                                st.error(f"❌ Error: {tc['error']}")
-                            
-                            st.markdown("---")
-                
-                # Full LLM Trace (Observability)
-                with st.expander("🔍 Full LLM Trace (Observability)"):
-                    st.caption(
-                        "Full trace of LLM interaction for debugging and evaluation. "
-                        "This data enables Error Analysis when the model makes mistakes."
-                    )
-                    if result.llm_trace:
-                        st.json(result.llm_trace)
-                    else:
-                        st.info("No trace data available.")
-                    
             except PermissionError as e:
                 st.error(f"🚫 {str(e)}")
             except Exception as e:
                 st.error(f"❌ Analysis failed: {str(e)}")
                 st.exception(e)
+    
+    # Display result from session_state (persists across button clicks)
+    if "last_analysis_result" in st.session_state:
+        result_data = st.session_state.last_analysis_result
+        
+        # Button to clear and start new analysis
+        if st.button("🔄 New Analysis", use_container_width=True):
+            del st.session_state.last_analysis_result
+            st.rerun()
+        
+        st.markdown("---")
+        
+        # Display results based on mode
+        if result_data["result_type"] == "chat":
+            # CHAT MODE - Simple text response
+            st.success("✅ Response Generated!")
+            
+            # Chat-style response display
+            st.markdown("### 🤖 Assistant Response")
+            st.markdown(
+                f'<div style="background-color: #f0f2f6; padding: 1.5rem; '
+                f'border-radius: 1rem; border-left: 4px solid #007bff;">'
+                f'{result_data["summary"]}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # ANALYSIS MODE - Full score display
+            st.success("✅ Analysis Complete!")
+            
+            # Score display
+            col1, col2, col3 = st.columns([1, 2, 1])
+            
+            with col2:
+                score_color = get_score_color(result_data["score"])
+                score_level = get_score_level(result_data["score"])
+                
+                st.markdown(f"""
+                <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, {score_color}22, {score_color}44); border-radius: 1rem; border: 2px solid {score_color};">
+                    <h1 style="color: {score_color}; margin: 0; font-size: 4rem;">{result_data["score"]}</h1>
+                    <h2 style="color: {score_color}; margin: 0.5rem 0;">{score_level}</h2>
+                    <p style="margin: 0; color: #666;">Analysis Score</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # Categories
+            if result_data["categories"]:
+                st.subheader("🏷️ Categories Identified")
+                for category in result_data["categories"]:
+                    st.markdown(f"- {category}")
+            else:
+                st.info("No specific categories identified.")
+            
+            # Summary/Reasoning
+            st.subheader("🤖 AI Analysis")
+            st.markdown(result_data["summary"])
+        
+        # Validation status
+        if result_data["validation_status"] != "PASS":
+            st.warning(
+                f"⚠️ **Validation Alert**: {result_data['validation_status']}\n\n"
+                f"{result_data['validation_details'] or ''}"
+            )
+        
+        # Human Feedback Loop section
+        st.markdown("---")
+        render_feedback_section(result_data["result_id"], current_user)
+        
+        # Request details
+        with st.expander("📄 Request Details"):
+            st.json({
+                "request_id": result_data["request_id"],
+                "result_id": result_data["result_id"],
+                "group": result_data["group"],
+                "created_by": result_data["created_by"],
+                "created_at": result_data["created_at"],
+            })
+        
+        # Tools & Observability
+        if result_data["llm_trace"] and result_data["llm_trace"].get("tool_calls"):
+            with st.expander("🔧 Tools Used (Agent Mode)", expanded=True):
+                trace = result_data["llm_trace"]
+                st.caption(
+                    f"**Mode:** {trace.get('mode', 'unknown')} | "
+                    f"**Iterations:** {trace.get('total_iterations', 0)}"
+                )
+                st.markdown("---")
+                
+                for tc in trace["tool_calls"]:
+                    tool_name = tc.get("tool", "unknown")
+                    status = tc.get("status", "unknown")
+                    status_icon = "✅" if status == "success" else "❌"
+                    
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        st.markdown(f"**{status_icon} {tool_name}**")
+                    with col2:
+                        if tc.get("arguments"):
+                            st.code(str(tc["arguments"]), language="json")
+                    
+                    if tc.get("result"):
+                        result_preview = str(tc["result"])
+                        if len(result_preview) > 300:
+                            result_preview = result_preview[:300] + "..."
+                        st.info(f"📤 Result: {result_preview}")
+                    
+                    if tc.get("error"):
+                        st.error(f"❌ Error: {tc['error']}")
+                    
+                    st.markdown("---")
+        
+        # Full LLM Trace (Observability)
+        with st.expander("🔍 Full LLM Trace (Observability)"):
+            st.caption(
+                "Full trace of LLM interaction for debugging and evaluation. "
+                "This data enables Error Analysis when the model makes mistakes."
+            )
+            if result_data["llm_trace"]:
+                st.json(result_data["llm_trace"])
+            else:
+                st.info("No trace data available.")
 
 
 def render_dashboard(current_user: UserProfile):
@@ -593,15 +656,17 @@ def render_dashboard(current_user: UserProfile):
             stats = processor.get_dashboard_stats()
             
             # Summary metrics
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
             
             with col1:
-                st.metric("📊 Visible Results", stats["total_analyzed"])
+                st.metric("📊 Total Results", stats["total_analyzed"])
             with col2:
-                st.metric("⚠️ High Score", stats["high_score_count"])
+                st.metric("💬 Chat", stats.get("chat_count", 0))
             with col3:
-                st.metric("🔴 Critical", stats["critical_count"], delta_color="inverse")
+                st.metric("⚠️ High Score", stats["high_score_count"])
             with col4:
+                st.metric("🔴 Critical", stats["critical_count"], delta_color="inverse")
+            with col5:
                 st.metric("📈 Avg Score", f"{stats['average_score']:.1f}")
             
             # Show which groups are visible
@@ -619,22 +684,29 @@ def render_dashboard(current_user: UserProfile):
                 for result in recent:
                     score_color = get_score_color(result.score)
                     score_level = get_score_level(result.score)
-                    with st.expander(
-                        f"Result #{result.id} | Score: {result.score} | "
-                        f"{score_level} | Group: {result.group}",
-                        expanded=False,
-                    ):
+                    
+                    # Build expander title based on result type
+                    if result.result_type == "chat":
+                        expander_title = f"💬 Chat #{result.id} | Group: {result.group}"
+                    else:
+                        expander_title = f"📊 Result #{result.id} | Score: {result.score} | {score_level} | Group: {result.group}"
+                    
+                    with st.expander(expander_title, expanded=False):
                         col1, col2 = st.columns([1, 3])
                         with col1:
-                            st.metric("Score", result.score)
-                            st.write(f"**Level:** {score_level}")
+                            if result.result_type == "chat":
+                                st.markdown("**Type:** 💬 Chat")
+                            else:
+                                st.metric("Score", result.score)
+                                st.write(f"**Level:** {score_level}")
                             st.write(f"**Group:** {result.group}")
                             st.write(f"**Date:** {result.created_at.strftime('%Y-%m-%d %H:%M')}")
                         with col2:
-                            st.write("**Categories:**")
-                            for cat in result.categories:
-                                st.markdown(f"- {cat}")
-                            st.write("**AI Summary:**")
+                            if result.result_type != "chat" and result.categories:
+                                st.write("**Categories:**")
+                                for cat in result.categories:
+                                    st.markdown(f"- {cat}")
+                            st.write("**AI Response:**" if result.result_type == "chat" else "**AI Summary:**")
                             st.markdown(result.summary)
                         
                         # Similar historical cases (RAG)
@@ -758,40 +830,54 @@ def render_evaluation(current_user: UserProfile):
             else:
                 st.success("✅ All validations passing. No issues detected.")
             
-            # Results needing review
+            # All Results for Review (with ABAC filtering)
             st.markdown("---")
-            st.subheader("📋 Results Needing Review")
+            st.subheader("📋 All Results")
             
             st.caption(
-                "Prioritized queue: validation failures first, then all results without feedback "
-                "(for full observability, regardless of score)."
+                "All results with ABAC filtering. Priority: validation failures → pending feedback → reviewed. "
+                "Results never disappear after feedback."
             )
             
-            results_to_review = processor.get_results_needing_review(limit=10)
+            results_to_review = processor.get_results_needing_review(limit=20)
             
             if results_to_review:
                 for result in results_to_review:
                     score_color = get_score_color(result.score)
                     score_level = get_score_level(result.score)
                     
-                    # Build status tags
+                    # Build status tags based on current state
                     tags = []
                     if result.validation_status != "PASS":
                         tags.append(f"🚨 {result.validation_status}")
                     if result.human_feedback is None:
-                        tags.append("⏳ Pending Feedback")
+                        tags.append("⏳ Pending")
+                    elif result.human_feedback is True:
+                        tags.append("👍 Correct")
+                    elif result.human_feedback is False:
+                        tags.append("👎 Incorrect")
+                    
+                    # Add type indicator for chat results
+                    if result.result_type == "chat":
+                        tags.insert(0, "💬 Chat")
                     
                     tag_str = " | ".join(tags) if tags else ""
                     
-                    with st.expander(
-                        f"Result #{result.id} | {score_level} ({result.score}) | {tag_str}",
-                        expanded=False,
-                    ):
+                    # Build title based on result type
+                    if result.result_type == "chat":
+                        expander_title = f"#{result.id} | 💬 Chat | {tag_str}"
+                    else:
+                        expander_title = f"#{result.id} | {score_level} ({result.score}) | {tag_str}"
+                    
+                    with st.expander(expander_title, expanded=False):
                         col1, col2 = st.columns([1, 2])
                         
                         with col1:
-                            st.metric("Score", result.score)
-                            st.write(f"**Level:** {score_level}")
+                            if result.result_type == "chat":
+                                st.markdown("**Type:** 💬 Chat")
+                            else:
+                                st.metric("Score", result.score)
+                                st.write(f"**Level:** {score_level}")
                             st.write(f"**Group:** {result.group}")
                             st.write(f"**Validation:** {result.validation_status}")
                             
@@ -799,11 +885,13 @@ def render_evaluation(current_user: UserProfile):
                                 st.error(result.validation_details)
                         
                         with col2:
-                            st.write("**Categories:**")
-                            for cat in result.categories:
-                                st.markdown(f"- {cat}")
+                            # Show categories only for analysis results
+                            if result.result_type != "chat" and result.categories:
+                                st.write("**Categories:**")
+                                for cat in result.categories:
+                                    st.markdown(f"- {cat}")
                             
-                            st.write("**AI Summary:**")
+                            st.write("**AI Response:**" if result.result_type == "chat" else "**AI Summary:**")
                             st.markdown(result.summary[:500] + "..." if len(result.summary) > 500 else result.summary)
                         
                         # Feedback buttons

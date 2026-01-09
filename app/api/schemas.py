@@ -12,10 +12,11 @@ from pydantic import BaseModel, Field
 # ============ Request Schemas ============
 
 class AnalyzeRequest(BaseModel):
-    """Request to analyze input data."""
-    input_text: str = Field(..., max_length=5000, description="Primary input text to analyze")
+    """Request to analyze or chat with AI."""
+    input_text: str = Field(..., max_length=5000, description="Primary input text to analyze or chat message")
     context: Optional[str] = Field(None, max_length=2000, description="Additional context")
     group: str = Field(default="default", max_length=50, description="Group for ABAC filtering")
+    mode: str = Field(default="analysis", description="Mode: 'analysis' for scoring, 'chat' for conversational Q&A")
     
     model_config = {
         "json_schema_extra": {
@@ -24,6 +25,13 @@ class AnalyzeRequest(BaseModel):
                     "input_text": "Analyze this text for any interesting patterns or insights.",
                     "context": "This is a sample input for demonstration purposes.",
                     "group": "group_a",
+                    "mode": "analysis",
+                },
+                {
+                    "input_text": "What are the common indicators of money laundering?",
+                    "context": "I'm reviewing a suspicious transaction report.",
+                    "group": "group_a",
+                    "mode": "chat",
                 }
             ]
         }
@@ -64,8 +72,9 @@ class AnalysisResultResponse(BaseModel):
     """Analysis result details in API response."""
     id: int
     request_id: int
-    score: int = Field(..., ge=0, le=100)
-    categories: list[str]
+    result_type: str = "analysis"  # "analysis" | "chat"
+    score: Optional[int] = Field(default=None, ge=0, le=100)  # None in chat mode
+    categories: list[str] = []
     summary: str
     processed_content: Optional[str]
     model_version: str

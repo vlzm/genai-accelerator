@@ -170,7 +170,7 @@ async def root():
     "/analyze",
     response_model=AnalyzeResponse,
     tags=["Analysis"],
-    summary="Analyze input data with AI",
+    summary="Analyze input data or chat with AI",
     responses={
         403: {"model": ErrorResponse, "description": "User lacks ANALYZE permission"},
     },
@@ -180,9 +180,13 @@ async def analyze(
     user: UserProfile = Depends(get_user_from_header),
 ):
     """
-    Submit input data for AI-powered analysis.
+    Submit input data for AI-powered analysis or conversational chat.
     
-    The analysis includes:
+    **Modes:**
+    - `analysis`: Full scoring mode with score, categories, and summary
+    - `chat`: Conversational Q&A mode (no score, just text response)
+    
+    The analysis mode includes:
     - Content processing and categorization
     - Score assignment based on significance
     - Summary generation
@@ -201,7 +205,9 @@ async def analyze(
                 group=request.group,
             )
             
-            req, result = processor.process_request(request_data)
+            # Pass mode to processor
+            mode = request.mode if request.mode in ("analysis", "chat") else "analysis"
+            req, result = processor.process_request(request_data, mode=mode)
             
             return AnalyzeResponse(
                 request=RequestResponse(
@@ -214,6 +220,7 @@ async def analyze(
                 result=AnalysisResultResponse(
                     id=result.id,
                     request_id=result.request_id,
+                    result_type=result.result_type,
                     score=result.score,
                     categories=result.categories,
                     summary=result.summary,
@@ -271,6 +278,7 @@ async def get_results(
                 AnalysisResultResponse(
                     id=r.id,
                     request_id=r.request_id,
+                    result_type=r.result_type,
                     score=r.score,
                     categories=r.categories,
                     summary=r.summary,
@@ -326,6 +334,7 @@ async def get_result(
             return AnalysisResultResponse(
                 id=result.id,
                 request_id=result.request_id,
+                result_type=result.result_type,
                 score=result.score,
                 categories=result.categories,
                 summary=result.summary,
@@ -458,6 +467,7 @@ async def get_results_needing_review(
                 AnalysisResultResponse(
                     id=r.id,
                     request_id=r.request_id,
+                    result_type=r.result_type,
                     score=r.score,
                     categories=r.categories,
                     summary=r.summary,
