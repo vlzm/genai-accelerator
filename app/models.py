@@ -3,6 +3,7 @@ Database models for Azure GenAI Accelerator.
 
 Uses SQLModel for ORM with Pydantic validation.
 Generic models for any AI-powered analysis use case.
+Supports optional RAG with pgvector for similarity search.
 """
 
 from datetime import datetime
@@ -10,6 +11,14 @@ from typing import Optional, List
 
 from pydantic import field_validator
 from sqlmodel import Field, SQLModel, Relationship, JSON, Column
+
+# Import pgvector only if available (RAG feature)
+try:
+    from pgvector.sqlalchemy import Vector
+    PGVECTOR_AVAILABLE = True
+except ImportError:
+    PGVECTOR_AVAILABLE = False
+    Vector = None  # type: ignore
 
 
 class Request(SQLModel, table=True):
@@ -72,6 +81,15 @@ class AnalysisResult(SQLModel, table=True):
     # VALIDATION FLAGS - Automated safety checks
     validation_status: str = Field(default="PASS", max_length=30, description="PASS, FAIL_LOW_QUALITY, etc.")
     validation_details: Optional[str] = Field(default=None, max_length=500, description="Details if validation failed")
+    
+    # RAG / VECTOR SEARCH - Embedding for similarity search
+    # Note: Only populated when RAG_ENABLED=true, otherwise null
+    # Using raw List[float] - the actual Vector type is applied via sa_column
+    embedding: Optional[List[float]] = Field(
+        default=None,
+        sa_column=Column(Vector(1536)) if PGVECTOR_AVAILABLE else None,
+        description="Vector embedding for similarity search (1536 dimensions for text-embedding-3-small)"
+    )
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     

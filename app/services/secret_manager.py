@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     # Azure Key Vault (for CLOUD mode)
     azure_keyvault_url: str = ""
     
+    # RAG / Vector Search (can be disabled)
+    rag_enabled: bool = True
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536
+    
     @property
     def is_local(self) -> bool:
         return self.env.upper() == "LOCAL"

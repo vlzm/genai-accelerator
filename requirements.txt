@@ -25,5 +25,8 @@ pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
 tenacity>=8.2.3
 
+# RAG / Vector Search (optional, disable with RAG_ENABLED=false)
+pgvector>=0.2.4
+
 # Development / Testing
 ipykernel>=6.29.0

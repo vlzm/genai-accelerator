@@ -41,6 +41,7 @@ from app.services.auth_mock import (
     Group,
 )
 from app.services.validation import run_all_validations
+from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ class Processor:
         self.session = session
         self.user = user
         self.llm_service = get_llm_service()
+        self.rag_service = RAGService(session)
     
     def _check_analyze_permission(self) -> None:
         """Verify user can analyze requests (RBAC)."""
@@ -188,6 +190,16 @@ class Processor:
         self.session.add(result)
         self.session.commit()
         self.session.refresh(result)
+        
+        # Generate embedding for RAG (if enabled)
+        # Done after commit to ensure result has ID
+        if self.rag_service.is_enabled:
+            try:
+                self.rag_service.embed_result(result, request.input_text)
+                self.session.commit()
+            except Exception as e:
+                logger.warning(f"Failed to generate embedding for result {result.id}: {e}")
+                # Don't fail the whole operation if embedding fails
         
         logger.info(
             f"Created analysis result {result.id} for request {request.id}: "
@@ -569,6 +581,48 @@ class Processor:
         high_score = list(self.session.exec(statement).all())
         
         return validation_failed + high_score
+
+    def find_similar_cases(
+        self,
+        result: AnalysisResult,
+        limit: int = 3,
+    ) -> list[AnalysisResult]:
+        """
+        Finds similar historical cases using RAG.
+        
+        This helps users make informed decisions by showing
+        how similar cases were handled in the past.
+        
+        Args:
+            result: Current AnalysisResult to find similar cases for
+            limit: Maximum number of similar cases to return
+            
+        Returns:
+            List of similar AnalysisResults (empty if RAG disabled)
+        """
+        if not self.rag_service.is_enabled:
+            return []
+        
+        self._check_view_permission()
+        
+        try:
+            similar = self.rag_service.find_similar_to_result(result, limit=limit)
+            
+            # Apply ABAC filter to results
+            if self.user:
+                similar = [
+                    r for r in similar
+                    if self.user.can_access_group(r.group)
+                ]
+            
+            return similar
+        except Exception as e:
+            logger.warning(f"Similar case search failed: {e}")
+            return []
+    
+    def is_rag_enabled(self) -> bool:
+        """Check if RAG feature is enabled."""
+        return self.rag_service.is_enabled
 
 
 def get_processor(session: Session, user: Optional[UserProfile] = None) -> Processor:
