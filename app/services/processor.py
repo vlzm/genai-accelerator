@@ -140,8 +140,8 @@ class Processor:
         # RBAC check
         self._check_analyze_permission()
         
-        # Call LLM service for analysis
-        llm_response: LLMResponse = self.llm_service.analyze(
+        # Call LLM service for analysis (using agent mode with tools)
+        llm_response: LLMResponse = self.llm_service.analyze_with_tools(
             input_text=request.input_text,
             context=request.context,
         )

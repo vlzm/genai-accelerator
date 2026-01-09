@@ -521,8 +521,41 @@ def render_new_analysis(current_user: UserProfile):
                         "created_at": request.created_at.isoformat(),
                     })
                 
-                # LLM Trace (Observability)
-                with st.expander("🔍 LLM Trace (Observability)"):
+                # Tools & Observability
+                if result.llm_trace and result.llm_trace.get("tool_calls"):
+                    with st.expander("🔧 Tools Used (Agent Mode)", expanded=True):
+                        trace = result.llm_trace
+                        st.caption(
+                            f"**Mode:** {trace.get('mode', 'unknown')} | "
+                            f"**Iterations:** {trace.get('total_iterations', 0)}"
+                        )
+                        st.markdown("---")
+                        
+                        for tc in trace["tool_calls"]:
+                            tool_name = tc.get("tool", "unknown")
+                            status = tc.get("status", "unknown")
+                            status_icon = "✅" if status == "success" else "❌"
+                            
+                            col1, col2 = st.columns([1, 2])
+                            with col1:
+                                st.markdown(f"**{status_icon} {tool_name}**")
+                            with col2:
+                                if tc.get("arguments"):
+                                    st.code(str(tc["arguments"]), language="json")
+                            
+                            if tc.get("result"):
+                                result_preview = str(tc["result"])
+                                if len(result_preview) > 300:
+                                    result_preview = result_preview[:300] + "..."
+                                st.info(f"📤 Result: {result_preview}")
+                            
+                            if tc.get("error"):
+                                st.error(f"❌ Error: {tc['error']}")
+                            
+                            st.markdown("---")
+                
+                # Full LLM Trace (Observability)
+                with st.expander("🔍 Full LLM Trace (Observability)"):
                     st.caption(
                         "Full trace of LLM interaction for debugging and evaluation. "
                         "This data enables Error Analysis when the model makes mistakes."
@@ -780,10 +813,40 @@ def render_evaluation(current_user: UserProfile):
                         # Similar historical cases (RAG)
                         render_similar_cases(result, current_user)
                         
-                        # Trace viewer
+                        # Tools & Trace viewer
                         if result.llm_trace:
-                            with st.expander("🔍 LLM Trace"):
-                                st.json(result.llm_trace)
+                            trace = result.llm_trace
+                            
+                            # Show tools summary if tools were used
+                            if trace.get("tool_calls"):
+                                with st.expander("🔧 Tools Used", expanded=True):
+                                    st.caption("Tools called during analysis:")
+                                    for tc in trace["tool_calls"]:
+                                        tool_name = tc.get("tool", "unknown")
+                                        status = tc.get("status", "unknown")
+                                        status_icon = "✅" if status == "success" else "❌"
+                                        
+                                        st.markdown(f"**{status_icon} {tool_name}**")
+                                        
+                                        # Arguments
+                                        if tc.get("arguments"):
+                                            st.code(str(tc["arguments"]), language="json")
+                                        
+                                        # Result preview
+                                        if tc.get("result"):
+                                            result_str = str(tc["result"])
+                                            if len(result_str) > 200:
+                                                result_str = result_str[:200] + "..."
+                                            st.markdown(f"*Result:* `{result_str}`")
+                                        
+                                        if tc.get("error"):
+                                            st.error(f"Error: {tc['error']}")
+                                        
+                                        st.markdown("---")
+                            
+                            # Full trace for debugging
+                            with st.expander("🔍 Full LLM Trace"):
+                                st.json(trace)
             else:
                 st.success("🎉 No results requiring immediate review!")
                 st.info("All results have passed validation and received feedback.")
