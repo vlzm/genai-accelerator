@@ -159,7 +159,9 @@ def get_database_password() -> str:
 
 def get_openai_api_key() -> str:
     """
-    Retrieves Azure OpenAI API key from appropriate source.
+    Retrieves OpenAI API key from appropriate source.
+    
+    Works for both Azure OpenAI and standard OpenAI providers.
     
     Returns:
         API key string
@@ -167,10 +169,60 @@ def get_openai_api_key() -> str:
     settings = get_settings()
     
     if settings.is_local:
-        return settings.azure_openai_api_key
+        # In LOCAL mode, check which provider is configured
+        if settings.llm_provider.lower() == "azure":
+            return settings.azure_openai_api_key
+        return settings.openai_api_key
     
     # In CLOUD mode, fetch from Key Vault
+    # Using unified secret name for both Azure OpenAI and standard OpenAI
     api_key = get_secret("AZURE-OPENAI-API-KEY")
     if not api_key:
         raise ValueError("AZURE-OPENAI-API-KEY not found in Key Vault")
+    return api_key
+
+
+def get_llm_api_key() -> str:
+    """
+    Retrieves LLM API key based on configured provider.
+    
+    Supports: openai, azure, anthropic
+    Note: Ollama doesn't require an API key
+    
+    Returns:
+        API key string for the configured provider
+    """
+    settings = get_settings()
+    provider = settings.llm_provider.lower()
+    
+    if settings.is_local:
+        # LOCAL mode: read from environment variables
+        if provider == "azure":
+            return settings.azure_openai_api_key
+        elif provider == "openai":
+            return settings.openai_api_key
+        elif provider == "anthropic":
+            return settings.anthropic_api_key
+        elif provider == "ollama":
+            return ""  # Ollama doesn't need API key
+        else:
+            raise ValueError(f"Unknown LLM provider: {provider}")
+    
+    # CLOUD mode: fetch from Key Vault
+    secret_name_map = {
+        "azure": "AZURE-OPENAI-API-KEY",
+        "openai": "AZURE-OPENAI-API-KEY",  # Using same secret for OpenAI
+        "anthropic": "ANTHROPIC-API-KEY",
+    }
+    
+    if provider == "ollama":
+        return ""  # Ollama doesn't need API key
+    
+    secret_name = secret_name_map.get(provider)
+    if not secret_name:
+        raise ValueError(f"Unknown LLM provider: {provider}")
+    
+    api_key = get_secret(secret_name)
+    if not api_key:
+        raise ValueError(f"{secret_name} not found in Key Vault")
     return api_key
