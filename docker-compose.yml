@@ -38,6 +38,9 @@ services:
       # Ollama (if using ollama provider)
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      # RAG / Vector Search (set to false to disable)
+      RAG_ENABLED: ${RAG_ENABLED:-true}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
     depends_on:
       db:
         condition: service_healthy
@@ -86,6 +89,9 @@ services:
       # Ollama (if using ollama provider)
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      # RAG / Vector Search (set to false to disable)
+      RAG_ENABLED: ${RAG_ENABLED:-true}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
     depends_on:
       db:
         condition: service_healthy
@@ -98,10 +104,10 @@ services:
       retries: 3
 
   # ============================================
-  # Database (PostgreSQL)
+  # Database (PostgreSQL with pgvector for RAG)
   # ============================================
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: genai-postgres
     environment:
       POSTGRES_USER: postgres

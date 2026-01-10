@@ -20,14 +20,22 @@ def get_database_url() -> str:
     Security Note:
         - LOCAL: Uses password from .env
         - CLOUD: Fetches password from Key Vault via Managed Identity
+                 Also enables SSL for Azure PostgreSQL
     """
     settings = get_settings()
     password = get_database_password()
     
-    return (
+    base_url = (
         f"postgresql://{settings.database_user}:{password}"
         f"@{settings.database_host}:{settings.database_port}/{settings.database_name}"
     )
+    
+    # Azure PostgreSQL requires SSL connections
+    # In CLOUD mode, we need to specify sslmode=require
+    if not settings.is_local:
+        base_url += "?sslmode=require"
+    
+    return base_url
 
 
 def create_db_engine():
@@ -70,10 +78,27 @@ def init_db() -> None:
     
     Creates all tables defined in SQLModel metadata.
     Safe to call multiple times (uses CREATE IF NOT EXISTS).
+    
+    Also enables pgvector extension if RAG is enabled and pgvector is available.
     """
-    from app.models import Request, AnalysisResult  # noqa: F401 - Import for side effects
+    from app.models import Request, AnalysisResult, PGVECTOR_AVAILABLE  # noqa: F401 - Import for side effects
+    from app.services.secret_manager import get_settings
+    from sqlalchemy import text
     
     engine = get_engine()
+    
+    # Enable pgvector extension if RAG is enabled and pgvector is available
+    settings = get_settings()
+    if settings.rag_enabled and PGVECTOR_AVAILABLE:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        except Exception as e:
+            # Log warning but don't fail - extension might already exist or not be available
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Could not enable pgvector extension: {e}. Continuing without vector support.")
+    
     SQLModel.metadata.create_all(engine)
 
 

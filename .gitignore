@@ -3,6 +3,11 @@
 .env.local
 .env.production
 
+# Interview preparation (personal notes)
+Interview*
+INTERVIEW*
+interview*
+
 # Python
 __pycache__/
 *.py[cod]

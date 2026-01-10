@@ -26,10 +26,10 @@ class LLMProviderType(str, Enum):
 def create_azure_provider() -> BaseLLMProvider:
     """Creates Azure OpenAI provider."""
     from app.services.llm.azure_provider import AzureOpenAIProvider
-    from app.services.secret_manager import get_openai_api_key
+    from app.services.secret_manager import get_llm_api_key
     
     settings = get_settings()
-    api_key = get_openai_api_key()
+    api_key = get_llm_api_key()
     
     return AzureOpenAIProvider(
         api_key=api_key,
@@ -42,11 +42,13 @@ def create_azure_provider() -> BaseLLMProvider:
 def create_openai_provider() -> BaseLLMProvider:
     """Creates standard OpenAI provider."""
     from app.services.llm.openai_provider import OpenAIProvider
+    from app.services.secret_manager import get_llm_api_key
     
     settings = get_settings()
+    api_key = get_llm_api_key()
     
     return OpenAIProvider(
-        api_key=settings.openai_api_key,
+        api_key=api_key,
         model=settings.openai_model,
     )
 
@@ -54,11 +56,13 @@ def create_openai_provider() -> BaseLLMProvider:
 def create_anthropic_provider() -> BaseLLMProvider:
     """Creates Anthropic Claude provider."""
     from app.services.llm.anthropic_provider import AnthropicProvider
+    from app.services.secret_manager import get_llm_api_key
     
     settings = get_settings()
+    api_key = get_llm_api_key()
     
     return AnthropicProvider(
-        api_key=settings.anthropic_api_key,
+        api_key=api_key,
         model=settings.anthropic_model,
     )
 

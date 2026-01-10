@@ -144,6 +144,7 @@ class OpenAIProvider(BaseLLMProvider):
                 result["tool_calls"] = [
                     {
                         "id": tc.id,
+                        "type": "function",
                         "function": {
                             "name": tc.function.name,
                             "arguments": tc.function.arguments,

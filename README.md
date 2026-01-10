@@ -20,35 +20,136 @@ The system is designed with security and scalability in mind:
 ```mermaid
 flowchart TB
     subgraph Azure["☁️ Azure Subscription"]
-        subgraph RG["📦 Resource Group"]
-            subgraph VNET["🔒 VNET (10.0.0.0/16)"]
-                subgraph AppSubnet["App Subnet (10.0.1.0/24)"]
-                    CA["🐳 Container Apps<br/>─────────────<br/>Streamlit UI :8501<br/>FastAPI API :8000"]
-                end
-                subgraph DataSubnet["Data Subnet (10.0.2.0/24)"]
-                    PG["🐘 PostgreSQL<br/>Flexible Server<br/>─────────────<br/>Private Endpoint"]
+        subgraph RG["📦 Resource Group (rg-genai-dev)"]
+            
+            subgraph Compute["🖥️ Compute Layer"]
+                CAE["🌐 Container Apps Environment<br/>─────────────<br/>genai-env-dev"]
+                
+                subgraph Apps["Container Apps"]
+                    API["⚡ genai-api<br/>─────────────<br/>FastAPI :8000<br/>Managed Identity"]
+                    UI["🖥️ genai-app<br/>─────────────<br/>Streamlit :8501<br/>Managed Identity"]
                 end
             end
-            KV["🔑 Key Vault<br/>─────────────<br/>API Keys<br/>DB Credentials"]
-            AOAI["🤖 Azure OpenAI<br/>─────────────<br/>GPT-4 / GPT-4o"]
+            
+            subgraph Data["💾 Data Layer"]
+                PG["🐘 PostgreSQL Flexible Server<br/>─────────────<br/>genai-pg-xxx<br/>pgvector enabled"]
+                DB[(app_db)]
+            end
+            
+            subgraph Security["🔐 Security Layer"]
+                KV["🔑 Key Vault<br/>─────────────<br/>genai-kv-xxx<br/>• AZURE-OPENAI-API-KEY<br/>• DATABASE-PASSWORD"]
+            end
+            
+            subgraph Registry["📦 Container Registry"]
+                ACR["🐳 Azure Container Registry<br/>─────────────<br/>genaiacrxxx<br/>• genai-api:latest<br/>• genai-app:latest"]
+            end
+            
+            subgraph Monitoring["📊 Monitoring"]
+                LA["📈 Log Analytics Workspace<br/>─────────────<br/>genai-logs-dev<br/>Container logs & metrics"]
+            end
         end
     end
-
+    
+    subgraph External["🌍 External Services"]
+        LLM["🤖 LLM Provider<br/>─────────────<br/>OpenAI API<br/>Azure OpenAI<br/>Anthropic"]
+    end
+    
     User["👤 User"]
+    CICD["🔄 GitHub Actions<br/>─────────────<br/>CI/CD Pipeline"]
 
-    User -->|HTTPS| CA
-    CA -->|"🔐 Managed Identity<br/>(Get Secrets)"| KV
-    CA -->|"🔗 Private Connection<br/>(AAD Token)"| PG
-    CA -->|"🌐 API Call<br/>(Private Endpoint)"| AOAI
+    User -->|HTTPS| UI
+    User -->|HTTPS| API
+    UI --> API
+    
+    API -->|"🔐 Managed Identity"| KV
+    UI -->|"🔐 Managed Identity"| KV
+    
+    API --> PG
+    UI --> PG
+    PG --> DB
+    
+    API -->|"API Key from KV"| LLM
+    
+    CAE --> LA
+    API --> LA
+    UI --> LA
+    
+    CICD -->|"docker push"| ACR
+    ACR -->|"pull image"| API
+    ACR -->|"pull image"| UI
 
-    style VNET fill:#e1f5fe,stroke:#01579b,stroke-width:3px
-    style AppSubnet fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style DataSubnet fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
-    style KV fill:#fce4ec,stroke:#c2185b,stroke-width:2px
-    style AOAI fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style CA fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    style PG fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style RG fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Compute fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style Data fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style Security fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style Registry fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style Monitoring fill:#e0f7fa,stroke:#00838f,stroke-width:2px
+    style External fill:#fafafa,stroke:#616161,stroke-width:2px
 ```
+
+### **Local Development Diagram (Docker Compose)**
+
+```mermaid
+flowchart TB
+    subgraph Local["🖥️ Local Machine (Docker Compose)"]
+        
+        subgraph Containers["🐳 Docker Containers"]
+            API["⚡ genai-api<br/>─────────────<br/>FastAPI :8000<br/>Hot reload enabled"]
+            UI["🖥️ genai-app<br/>─────────────<br/>Streamlit :8501<br/>Hot reload enabled"]
+            PG["🐘 postgres<br/>─────────────<br/>PostgreSQL :5432<br/>pgvector extension"]
+        end
+        
+        subgraph Volumes["💾 Docker Volumes"]
+            PGDATA[("postgres_data<br/>─────────────<br/>Persistent DB storage")]
+        end
+        
+        subgraph Config["⚙️ Configuration"]
+            ENV[".env file<br/>─────────────<br/>• OPENAI_API_KEY<br/>• LLM_PROVIDER<br/>• DATABASE_URL"]
+            CODE["./app<br/>─────────────<br/>Mounted source code<br/>(live reload)"]
+        end
+    end
+    
+    subgraph External["🌍 External Services"]
+        LLM["🤖 LLM Provider<br/>─────────────<br/>OpenAI API<br/>Anthropic<br/>Ollama (local)"]
+    end
+    
+    User["👤 Developer"]
+    Browser["🌐 Browser"]
+
+    User -->|"docker-compose up"| Containers
+    Browser -->|"http://localhost:8501"| UI
+    Browser -->|"http://localhost:8000/docs"| API
+    
+    UI -->|"internal network"| API
+    API --> PG
+    PG --> PGDATA
+    
+    ENV -.->|"environment"| API
+    ENV -.->|"environment"| UI
+    CODE -.->|"volume mount"| API
+    CODE -.->|"volume mount"| UI
+    
+    API -->|"API Key from .env"| LLM
+
+    style Local fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
+    style Containers fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style Volumes fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Config fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style External fill:#fafafa,stroke:#616161,stroke-width:2px
+```
+
+### **Comparison: Local vs Azure**
+
+| Aspect | Local (Docker Compose) | Azure (Container Apps) |
+|--------|------------------------|------------------------|
+| **Secrets** | `.env` file | Key Vault + Managed Identity |
+| **Database** | Docker container | PostgreSQL Flexible Server |
+| **Logs** | `docker logs` | Log Analytics Workspace |
+| **Images** | Local build | Azure Container Registry |
+| **Scaling** | Manual | Auto-scaling (0-N replicas) |
+| **Cost** | Free | ~$20-25/month |
+| **SSL/TLS** | Not included | Automatic HTTPS |
+| **Use Case** | Development | Production |
 
 ### **Request Processing Flow**
 
@@ -119,8 +220,8 @@ sequenceDiagram
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/your-repo/azure-genai-accelerator.git
-cd azure-genai-accelerator
+git clone https://github.com/your-org/genai-accelerator.git
+cd genai-accelerator
 ```
 
 ### 2. Set up environment
@@ -162,30 +263,122 @@ docker-compose up --build
 
 Infrastructure is defined in Terraform for reproducibility.
 
-### 1. Provision Infrastructure
+### Prerequisites
+
+1. **Azure CLI** installed and configured (`az login`)
+2. **Terraform** v1.5.0 or higher
+3. **Docker** for building images
+
+### Step 1: Configure Terraform Variables
 
 ```bash
 cd infra
-az login
-terraform init
-terraform apply
+cp terraform.tfvars.example terraform.tfvars
 ```
 
-*Creates: Resource Group, VNET, Key Vault, PostgreSQL, Container Apps*
+Edit `terraform.tfvars` with your values:
 
-### 2. Build and Push Images
+```hcl
+# Required
+project_name      = "genai"         # Your project name
+environment       = "dev"           # dev, staging, prod
+db_admin_password = "YourStrongP@ssw0rd123!"
+
+# LLM Configuration (choose one provider)
+llm_provider   = "openai"           # openai, azure, anthropic, ollama
+openai_api_key = "sk-..."           # Your API key
+
+# Azure OpenAI (if llm_provider=azure)
+# azure_openai_endpoint        = "https://your-resource.openai.azure.com/"
+# azure_openai_deployment_name = "gpt-4"
+```
+
+### Step 2: Provision Infrastructure
 
 ```bash
-az acr login --name <your_registry>
+az login
+terraform init
+terraform plan    # Review changes
+terraform apply   # Create resources
+```
 
-# Build and push UI
-docker build -t <registry>.azurecr.io/genai-app:v1 .
-docker push <registry>.azurecr.io/genai-app:v1
+This creates:
+- **Resource Group** - Logical container for all resources
+- **Container Registry (ACR)** - Private Docker registry
+- **Key Vault** - Secure secret storage
+- **PostgreSQL Flexible Server** - Database with pgvector extension
+- **Container Apps Environment** - Serverless container platform
+- **Container Apps** - API and UI applications with Managed Identity
+
+### Step 3: Build and Push Docker Images
+
+```bash
+# Get ACR name from Terraform output
+ACR_NAME=$(terraform output -raw acr_name)
+ACR_URL=$(terraform output -raw acr_login_server)
+
+# Login to ACR
+az acr login --name $ACR_NAME
 
 # Build and push API
-docker build -f Dockerfile.api -t <registry>.azurecr.io/genai-api:v1 .
-docker push <registry>.azurecr.io/genai-api:v1
+docker build -f Dockerfile.api -t $ACR_URL/genai-api:latest .
+docker push $ACR_URL/genai-api:latest
+
+# Build and push UI
+docker build -t $ACR_URL/genai-app:latest .
+docker push $ACR_URL/genai-app:latest
 ```
+
+### Step 4: Trigger Container App Deployment
+
+```bash
+RG_NAME=$(terraform output -raw resource_group_name)
+
+# Update API Container App
+az containerapp update \
+  --name genai-api \
+  --resource-group $RG_NAME \
+  --image $ACR_URL/genai-api:latest
+
+# Update UI Container App
+az containerapp update \
+  --name genai-app \
+  --resource-group $RG_NAME \
+  --image $ACR_URL/genai-app:latest
+```
+
+### Step 5: Get Application URLs
+
+```bash
+terraform output app_url   # Streamlit UI
+terraform output api_url   # FastAPI API
+```
+
+### CI/CD (GitHub Actions)
+
+The project includes a production-ready CI/CD pipeline. To enable:
+
+1. **Configure Azure OIDC** (passwordless authentication):
+   ```bash
+   # Create App Registration with federated credentials
+   # See: https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure
+   ```
+
+2. **Add GitHub Secrets**:
+   - `AZURE_CLIENT_ID` - App registration client ID
+   - `AZURE_TENANT_ID` - Azure AD tenant ID
+   - `AZURE_SUBSCRIPTION_ID` - Azure subscription ID
+
+3. **Push to main branch** - Pipeline automatically builds, tests, and deploys
+
+### Security Features
+
+| Feature | Description |
+|---------|-------------|
+| Managed Identity | Container Apps authenticate to Key Vault without secrets |
+| Key Vault | All API keys and passwords stored securely |
+| SSL/TLS | Database connections require SSL |
+| OIDC | CI/CD uses passwordless Azure authentication |
 
 ## **🛠 Tech Stack**
 
@@ -204,24 +397,44 @@ docker push <registry>.azurecr.io/genai-api:v1
 
 ```
 /
-├── app/                      # Application Source
-│   ├── main.py               # Streamlit entrypoint
-│   ├── api/                  # FastAPI REST API
-│   │   ├── main.py           # API entrypoint
-│   │   └── schemas.py        # Pydantic schemas
-│   ├── models.py             # SQLModel DB schema
-│   ├── database.py           # DB connection logic
-│   └── services/             # Business logic
-│       ├── processor.py      # Core processing logic
-│       ├── validation.py     # Quality checks
-│       ├── llm_service.py    # LLM interface
-│       ├── llm/              # LLM providers
-│       └── auth_mock.py      # Mock identity provider
-├── infra/                    # Terraform (IaC)
-├── Dockerfile                # Streamlit container
-├── Dockerfile.api            # FastAPI container
-├── docker-compose.yml        # Local development
-└── requirements.txt          # Python dependencies
+├── app/                          # Application Source
+│   ├── main.py                   # Streamlit entrypoint
+│   ├── models.py                 # SQLModel DB schema
+│   ├── database.py               # DB connection logic
+│   ├── api/                      # FastAPI REST API
+│   │   ├── main.py               # API entrypoint
+│   │   └── schemas.py            # Pydantic schemas
+│   └── services/                 # Business logic
+│       ├── processor.py          # Core processing logic
+│       ├── validation.py         # Quality checks
+│       ├── llm_service.py        # LLM orchestration
+│       ├── rag_service.py        # RAG (Retrieval-Augmented Generation)
+│       ├── secret_manager.py     # Azure Key Vault integration
+│       ├── auth_mock.py          # Mock identity provider
+│       ├── llm/                  # LLM providers
+│       │   ├── base.py           # Base provider interface
+│       │   ├── factory.py        # Provider factory
+│       │   ├── openai_provider.py
+│       │   ├── azure_provider.py
+│       │   ├── anthropic_provider.py
+│       │   └── ollama_provider.py
+│       └── tools/                # Function calling tools
+│           └── definitions.py
+├── infra/                        # Terraform (IaC)
+│   ├── main.tf                   # Main infrastructure
+│   ├── variables.tf              # Input variables
+│   ├── outputs.tf                # Output values
+│   └── terraform.tfvars.example  # Example config
+├── notebooks/                    # Jupyter notebooks
+│   ├── test_pipeline.ipynb       # Pipeline testing
+│   └── test_chat_mode.ipynb      # Chat mode testing
+├── .github/workflows/            # CI/CD
+│   └── ci-cd.yml                 # GitHub Actions pipeline
+├── Dockerfile                    # Streamlit container
+├── Dockerfile.api                # FastAPI container
+├── docker-compose.yml            # Local development
+├── requirements.txt              # Python dependencies
+└── SPEC.md                       # Project specification
 ```
 
 ## **🔧 Customization**
@@ -243,10 +456,10 @@ docker push <registry>.azurecr.io/genai-api:v1
 
 | Provider | Environment Variables |
 |----------|----------------------|
-| OpenAI | `LLM_PROVIDER=openai`, `OPENAI_API_KEY` |
-| Azure OpenAI | `LLM_PROVIDER=azure`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` |
-| Anthropic | `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY` |
-| Ollama | `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL` |
+| OpenAI | `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL` |
+| Azure OpenAI | `LLM_PROVIDER=azure`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT_NAME` |
+| Anthropic | `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` |
+| Ollama | `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` |
 
 ## **📊 Observability Features**
 

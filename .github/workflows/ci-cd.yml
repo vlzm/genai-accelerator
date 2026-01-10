@@ -11,9 +11,16 @@
 # 3. Terraform Plan - Infrastructure validation before deployment
 #
 # PREREQUISITES (to actually run this pipeline):
-# - Configure Azure AD App Registration with OIDC federation
-# - Add GitHub secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
-# - Enable GitHub Actions OIDC token permissions
+# 1. Configure Azure AD App Registration with OIDC federation
+# 2. Add GitHub Secrets (Settings → Secrets and variables → Actions):
+#    - AZURE_CLIENT_ID          (from App Registration)
+#    - AZURE_TENANT_ID          (from Azure AD)
+#    - AZURE_SUBSCRIPTION_ID    (from Azure Portal)
+#    - ACR_NAME                 (from: terraform output -raw acr_name)
+#    - RG_NAME                  (from: terraform output -raw resource_group_name)
+#    - TF_VAR_DB_ADMIN_PASSWORD (PostgreSQL password)
+#    - TF_VAR_OPENAI_API_KEY    (OpenAI API key)
+# 3. Enable GitHub Actions OIDC token permissions
 # =============================================================================
 
 name: 🚀 GenAI Accelerator Pipeline
@@ -32,18 +39,20 @@ permissions:
 
 env:
   # Azure OIDC credentials (stored in GitHub Secrets)
+  # Configure via: Settings → Secrets and variables → Actions
   AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
   AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   
-  # Resource names (must match Terraform configuration)
-  # Format: ${project_name}acr${environment}
-  ACR_NAME: "genaiacrdev"
-  # Format: rg-${project_name}-${environment}
-  RG_NAME: "rg-genai-dev"
-  # Container App names from Terraform
+  # Resource names from Terraform (stored in GitHub Secrets after first deploy)
+  # Get these values with: terraform output -raw acr_name
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  RG_NAME: ${{ secrets.RG_NAME }}
+  
+  # Container App names (static, defined in Terraform)
   API_APP_NAME: "genai-api"
   UI_APP_NAME: "genai-app"
+  
   # Python version matching Dockerfile
   PYTHON_VERSION: "3.12"
 
@@ -120,6 +129,10 @@ jobs:
           terraform_version: "1.5.0"
 
       - name: 📋 Terraform Init & Plan
+        env:
+          # Terraform variables from GitHub Secrets
+          TF_VAR_db_admin_password: ${{ secrets.TF_VAR_DB_ADMIN_PASSWORD }}
+          TF_VAR_openai_api_key: ${{ secrets.TF_VAR_OPENAI_API_KEY }}
         run: |
           cd infra
           terraform init -input=false
@@ -127,9 +140,9 @@ jobs:
           echo "### 🔍 Terraform Plan Output" >> $GITHUB_STEP_SUMMARY
           echo "Running terraform plan to validate infrastructure changes..."
           
-          # Note: This will fail without proper tfvars
-          # In production, use terraform plan -var-file=prod.tfvars
-          terraform plan -input=false -no-color || echo "Plan requires tfvars - skipped in CI"
+          # Run plan with secrets from GitHub
+          # In production, this validates infrastructure changes before apply
+          terraform plan -input=false -no-color 2>&1 | head -100 || echo "⚠️ Plan requires secrets - configure GitHub Secrets"
 
   # ===========================================================================
   # Stage 3: Build & Deploy (Only on main branch push)

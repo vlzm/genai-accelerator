@@ -41,6 +41,7 @@ from app.services.auth_mock import (
     Group,
 )
 from app.services.validation import run_all_validations
+from app.services.rag_service import RAGService, SimilarCaseResult, RAGTrace
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ class Processor:
         self.session = session
         self.user = user
         self.llm_service = get_llm_service()
+        self.rag_service = RAGService(session)
     
     def _check_analyze_permission(self) -> None:
         """Verify user can analyze requests (RBAC)."""
@@ -115,19 +117,24 @@ class Processor:
         logger.info(f"Created request {request.id} in group {group}")
         return request
     
-    def analyze_request(self, request: Request) -> AnalysisResult:
+    def analyze_request(self, request: Request, mode: str = "analysis") -> AnalysisResult:
         """
         Performs LLM-based analysis on a request.
         
         Requires ANALYZE permission.
         
+        Supports two modes:
+        - "analysis": Full scoring mode with score, categories, and summary
+        - "chat": Conversational mode - returns only a text response (no score)
+        
         Includes observability features:
         - Full LLM trace (input, tool calls, output)
-        - Validation checks (quality, consistency)
+        - Validation checks (quality, consistency) - only in analysis mode
         - Fields for human feedback collection
         
         Args:
             request: Request to analyze
+            mode: "analysis" or "chat"
             
         Returns:
             Persisted AnalysisResult with results, trace, and validation status
@@ -138,10 +145,11 @@ class Processor:
         # RBAC check
         self._check_analyze_permission()
         
-        # Call LLM service for analysis
-        llm_response: LLMResponse = self.llm_service.analyze(
+        # Call LLM service for analysis (using agent mode with tools)
+        llm_response: LLMResponse = self.llm_service.analyze_with_tools(
             input_text=request.input_text,
             context=request.context,
+            mode=mode,
         )
         
         # Build summary with tool info if applicable
@@ -149,24 +157,33 @@ class Processor:
         if llm_response.tools_used:
             summary += f"\n\n[Tools used: {', '.join(llm_response.tools_used)}]"
         
-        # Run validation checks (automated safety checks)
-        validation_result = run_all_validations(
-            response_text=summary,
-            score=llm_response.score,
-            categories=llm_response.categories,
-        )
-        
-        if not validation_result.passed:
-            logger.warning(
-                f"Validation failed for request {request.id}: "
-                f"{validation_result.status} - {validation_result.details}"
+        # Run validation checks only in analysis mode (chat mode skips validation)
+        if mode == "analysis" and llm_response.score is not None:
+            validation_result = run_all_validations(
+                response_text=summary,
+                score=llm_response.score,
+                categories=llm_response.categories,
+            )
+            
+            if not validation_result.passed:
+                logger.warning(
+                    f"Validation failed for request {request.id}: "
+                    f"{validation_result.status} - {validation_result.details}"
+                )
+        else:
+            # Chat mode - skip validation (ValidationResult is a dataclass)
+            from app.services.validation import ValidationResult
+            validation_result = ValidationResult(
+                status="PASS",
+                details="Chat mode - validation skipped",
             )
         
         # Create analysis result with ABAC metadata and observability fields
         result = AnalysisResult(
             request_id=request.id,
-            score=llm_response.score,
-            categories=llm_response.categories,
+            result_type=mode,  # "analysis" or "chat"
+            score=llm_response.score,  # None in chat mode
+            categories=llm_response.categories,  # Empty in chat mode
             summary=summary,
             processed_content=llm_response.processed_content,
             model_version=self.llm_service.get_model_version(),
@@ -189,9 +206,19 @@ class Processor:
         self.session.commit()
         self.session.refresh(result)
         
+        # Generate embedding for RAG (if enabled) - for both modes
+        if self.rag_service.is_enabled:
+            try:
+                self.rag_service.embed_result(result, request.input_text)
+                self.session.commit()
+            except Exception as e:
+                logger.warning(f"Failed to generate embedding for result {result.id}: {e}")
+                # Don't fail the whole operation if embedding fails
+        
+        log_score = result.score if result.score is not None else "N/A"
         logger.info(
-            f"Created analysis result {result.id} for request {request.id}: "
-            f"score={result.score}, group={result.group}, "
+            f"Created {mode} result {result.id} for request {request.id}: "
+            f"score={log_score}, group={result.group}, "
             f"validation={validation_result.status}"
         )
         
@@ -200,22 +227,24 @@ class Processor:
     def process_request(
         self,
         data: RequestCreate,
+        mode: str = "analysis",
     ) -> tuple[Request, AnalysisResult]:
         """
-        Full workflow: create request and analyze it.
+        Full workflow: create request and analyze/chat.
         
         This is the main entry point for the UI layer.
         Requires ANALYZE permission.
         
         Args:
             data: Request creation data
+            mode: "analysis" for scoring mode, "chat" for conversational mode
             
         Returns:
             Tuple of (Request, AnalysisResult)
         """
         self._check_analyze_permission()
         request = self.create_request(data)
-        result = self.analyze_request(request)
+        result = self.analyze_request(request, mode=mode)
         return request, result
     
     def _apply_abac_filter(self, statement):
@@ -225,7 +254,10 @@ class Processor:
         Filters:
         1. Group: Users only see their group (unless VIEW_ALL_GROUPS)
         2. Score: Users without VIEW_SENSITIVE can't see high scores
+           (Note: Chat results with score=None are always visible)
         """
+        from sqlmodel import or_
+        
         if not self.user:
             return statement
         
@@ -237,9 +269,16 @@ class Processor:
                 conditions.append(AnalysisResult.group == self.user.group.value)
         
         # Score filter (ABAC based on permissions)
+        # Chat results (score=None) are always visible regardless of permissions
         if not self.user.has_permission(Permission.VIEW_SENSITIVE):
             max_score = self.user.get_max_visible_score()
-            conditions.append(AnalysisResult.score <= max_score)
+            # Allow: score <= max_score OR score IS NULL (chat mode)
+            conditions.append(
+                or_(
+                    AnalysisResult.score <= max_score,
+                    AnalysisResult.score.is_(None)
+                )
+            )
         
         if conditions:
             statement = statement.where(and_(*conditions))
@@ -386,21 +425,33 @@ class Processor:
         if not results:
             return {
                 "total_analyzed": 0,
+                "chat_count": 0,
                 "high_score_count": 0,
                 "critical_count": 0,
                 "average_score": 0,
                 "groups_visible": [],
             }
         
-        high_score = [r for r in results if r.score >= 50]
-        critical = [r for r in results if r.score >= 76]
+        # Separate analysis and chat results (score can be None for chat)
+        analysis_results = [r for r in results if r.score is not None]
+        chat_results = [r for r in results if r.score is None]
+        
+        high_score = [r for r in analysis_results if r.score >= 50]
+        critical = [r for r in analysis_results if r.score >= 76]
         groups = list(set(r.group for r in results))
+        
+        # Calculate average only for analysis results with scores
+        avg_score = (
+            sum(r.score for r in analysis_results) / len(analysis_results)
+            if analysis_results else 0
+        )
         
         return {
             "total_analyzed": len(results),
+            "chat_count": len(chat_results),
             "high_score_count": len(high_score),
             "critical_count": len(critical),
-            "average_score": sum(r.score for r in results) / len(results),
+            "average_score": avg_score,
             "groups_visible": groups,
         }
 
@@ -519,12 +570,15 @@ class Processor:
     
     def get_results_needing_review(self, limit: int = 20) -> list[AnalysisResult]:
         """
-        Gets results that need human review.
+        Gets ALL results for the Evaluation page with ABAC/RBAC filtering.
         
-        Prioritizes:
-        1. Results with validation failures
-        2. Results without feedback
-        3. High-score results
+        Results are prioritized:
+        1. Results with validation failures (first priority - need immediate attention)
+        2. Results without feedback (pending review)
+        3. Results with feedback (already reviewed)
+        
+        All results remain visible - nothing disappears after feedback.
+        ABAC filtering ensures users only see results they have access to.
         
         Args:
             limit: Maximum number of results to return
@@ -534,7 +588,7 @@ class Processor:
         """
         self._check_view_permission()
         
-        # Get results with validation failures first
+        # Priority 1: Results with validation failures
         statement = (
             select(AnalysisResult)
             .where(AnalysisResult.validation_status != "PASS")
@@ -544,31 +598,105 @@ class Processor:
         statement = statement.limit(limit)
         
         validation_failed = list(self.session.exec(statement).all())
+        collected_ids = [r.id for r in validation_failed]
         
         remaining = limit - len(validation_failed)
         if remaining <= 0:
             return validation_failed
         
-        # Get high-score results without feedback
-        existing_ids = [r.id for r in validation_failed]
+        # Priority 2: Results without feedback (pending review)
         statement = (
             select(AnalysisResult)
             .where(
                 and_(
                     AnalysisResult.human_feedback.is_(None),
                     AnalysisResult.validation_status == "PASS",
-                    AnalysisResult.score >= 50,
-                    AnalysisResult.id.notin_(existing_ids) if existing_ids else True,
+                    AnalysisResult.id.notin_(collected_ids) if collected_ids else True,
                 )
             )
-            .order_by(AnalysisResult.score.desc())
+            .order_by(AnalysisResult.created_at.desc())
         )
         statement = self._apply_abac_filter(statement)
         statement = statement.limit(remaining)
         
-        high_score = list(self.session.exec(statement).all())
+        pending_feedback = list(self.session.exec(statement).all())
+        collected_ids.extend([r.id for r in pending_feedback])
         
-        return validation_failed + high_score
+        remaining = remaining - len(pending_feedback)
+        if remaining <= 0:
+            return validation_failed + pending_feedback
+        
+        # Priority 3: Results WITH feedback (already reviewed - still shown for reference)
+        statement = (
+            select(AnalysisResult)
+            .where(
+                and_(
+                    AnalysisResult.human_feedback.is_not(None),
+                    AnalysisResult.validation_status == "PASS",
+                    AnalysisResult.id.notin_(collected_ids) if collected_ids else True,
+                )
+            )
+            .order_by(AnalysisResult.created_at.desc())
+        )
+        statement = self._apply_abac_filter(statement)
+        statement = statement.limit(remaining)
+        
+        reviewed = list(self.session.exec(statement).all())
+        
+        return validation_failed + pending_feedback + reviewed
+
+    def find_similar_cases(
+        self,
+        result: AnalysisResult,
+        limit: int = 3,
+        min_similarity: float = 0.3,
+    ) -> tuple[list[SimilarCaseResult], RAGTrace]:
+        """
+        Finds similar historical cases using RAG.
+        
+        This helps users make informed decisions by showing
+        how similar cases were handled in the past.
+        
+        Args:
+            result: Current AnalysisResult to find similar cases for
+            limit: Maximum number of similar cases to return
+            min_similarity: Minimum similarity threshold (0.0-1.0, default 30%)
+            
+        Returns:
+            Tuple of (list of SimilarCaseResult with scores, RAGTrace for debugging)
+        """
+        trace = RAGTrace(enabled=self.rag_service.is_enabled)
+        
+        if not self.rag_service.is_enabled:
+            return [], trace
+        
+        self._check_view_permission()
+        
+        try:
+            similar, trace = self.rag_service.find_similar_to_result(
+                result, 
+                limit=limit,
+                min_similarity=min_similarity,
+            )
+            
+            # Apply ABAC filter to results
+            if self.user:
+                filtered = [
+                    s for s in similar
+                    if self.user.can_access_group(s.result.group)
+                ]
+                trace.results_after_filter = len(filtered)
+                return filtered, trace
+            
+            return similar, trace
+        except Exception as e:
+            trace.search_error = str(e)
+            logger.warning(f"Similar case search failed: {e}")
+            return [], trace
+    
+    def is_rag_enabled(self) -> bool:
+        """Check if RAG feature is enabled."""
+        return self.rag_service.is_enabled
 
 
 def get_processor(session: Session, user: Optional[UserProfile] = None) -> Processor:

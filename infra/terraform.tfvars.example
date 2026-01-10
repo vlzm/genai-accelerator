@@ -1,16 +1,45 @@
-# Azure GenAI Accelerator - Terraform Variables Example
+# ============================================
+# Azure GenAI Accelerator - Terraform Variables
+# ============================================
 # Copy this file to terraform.tfvars and fill in your values
+#
+# Required fields are marked with (REQUIRED)
+# Optional fields have sensible defaults
 
-# Project configuration
+# ============================================
+# Project Configuration
+# ============================================
 project_name = "genai"
-location     = "eastus"
-environment  = "dev"
+location     = "eastus"  # Options: eastus, westus2, westeurope, etc.
+environment  = "dev"     # Options: dev, staging, prod
 
-# Database password (use a strong password)
+# ============================================
+# Database Configuration (REQUIRED)
+# ============================================
+# Use a strong password: min 8 chars, uppercase, lowercase, number, special char
 db_admin_password = "YourStrongPassword123!"
 
-# OpenAI API key
+# ============================================
+# LLM Provider Configuration (REQUIRED)
+# ============================================
+# Choose your LLM provider: openai, azure, anthropic, ollama
+llm_provider = "openai"
+
+# OpenAI API key (REQUIRED for openai/azure providers)
 openai_api_key = "sk-..."
 
-# Optional: Change the model
+# Model to use
 openai_model = "gpt-4.1"
+
+# ============================================
+# Azure OpenAI Configuration (if using azure provider)
+# ============================================
+# Uncomment and fill if llm_provider = "azure"
+# azure_openai_endpoint        = "https://your-resource.openai.azure.com/"
+# azure_openai_deployment_name = "gpt-4"
+
+# ============================================
+# RAG / Vector Search Configuration
+# ============================================
+rag_enabled     = true
+embedding_model = "text-embedding-3-small"

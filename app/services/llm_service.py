@@ -23,6 +23,10 @@ class LLMService:
     High-level LLM service for AI-powered analysis.
     
     Wraps the provider abstraction layer for easy use by business logic.
+    
+    Supports two modes:
+    - "analysis": Full scoring mode with score, categories, and summary
+    - "chat": Conversational mode with only text response (no score)
     """
     
     def __init__(self, provider: Optional[BaseLLMProvider] = None):
@@ -40,10 +44,16 @@ class LLMService:
         """Returns the underlying LLM provider."""
         return self._provider
     
+    @property
+    def provider_name(self) -> str:
+        """Returns the provider name (e.g., 'azure', 'openai')."""
+        return self._provider.provider_name
+    
     def analyze(
         self,
         input_text: str,
         context: Optional[str] = None,
+        mode: str = "analysis",
     ) -> LLMResponse:
         """
         Analyzes input text with optional context (simple mode).
@@ -51,6 +61,7 @@ class LLMService:
         Args:
             input_text: Primary text to analyze
             context: Optional additional context
+            mode: "analysis" for scoring mode, "chat" for conversational mode
             
         Returns:
             Structured LLMResponse with analysis results
@@ -58,6 +69,7 @@ class LLMService:
         return self._provider.analyze(
             input_text=input_text,
             context=context,
+            mode=mode,
         )
     
     def analyze_with_tools(
@@ -66,6 +78,7 @@ class LLMService:
         context: Optional[str] = None,
         agent_prompt: Optional[str] = None,
         max_iterations: int = 8,
+        mode: str = "analysis",
     ) -> LLMResponse:
         """
         Analyzes input using agent mode with tool calling.
@@ -78,6 +91,7 @@ class LLMService:
             context: Optional additional context
             agent_prompt: Custom system prompt for this analysis
             max_iterations: Maximum tool-calling iterations
+            mode: "analysis" for scoring mode, "chat" for conversational mode
             
         Returns:
             Structured LLMResponse with analysis and tool usage trace
@@ -87,6 +101,7 @@ class LLMService:
             context=context,
             agent_prompt=agent_prompt,
             max_iterations=max_iterations,
+            mode=mode,
         )
     
     def get_model_version(self) -> str:

@@ -164,6 +164,7 @@ class OllamaProvider(BaseLLMProvider):
                     result["tool_calls"] = [
                         {
                             "id": f"call_{i}",
+                            "type": "function",
                             "function": {
                                 "name": tc.get("function", {}).get("name", ""),
                                 "arguments": json.dumps(tc.get("function", {}).get("arguments", {})),
