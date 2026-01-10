@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.80"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.5"
+    }
   }
 }
 
@@ -15,6 +19,48 @@ provider "azurerm" {
       purge_soft_delete_on_destroy = true
     }
   }
+
+  # Skip auto-registration of ALL providers (would check ~60 providers = 10-20 min)
+  # We explicitly register only the providers we need below
+  skip_provider_registration = true
+}
+
+# ============================================
+# RESOURCE PROVIDER REGISTRATION
+# ============================================
+# Explicitly register only the Azure providers we need
+# This is idempotent - safe to run multiple times
+# First apply on a new subscription will register them (~1-2 min each)
+
+resource "azurerm_resource_provider_registration" "app" {
+  name = "Microsoft.App" # Container Apps
+}
+
+resource "azurerm_resource_provider_registration" "containerregistry" {
+  name = "Microsoft.ContainerRegistry"
+}
+
+resource "azurerm_resource_provider_registration" "keyvault" {
+  name = "Microsoft.KeyVault"
+}
+
+resource "azurerm_resource_provider_registration" "postgresql" {
+  name = "Microsoft.DBforPostgreSQL"
+}
+
+resource "azurerm_resource_provider_registration" "operationalinsights" {
+  name = "Microsoft.OperationalInsights" # Log Analytics
+}
+
+# ============================================
+# RANDOM SUFFIX (for globally unique resource names)
+# ============================================
+resource "random_string" "suffix" {
+  length  = 6
+  lower   = true
+  upper   = false
+  numeric = true
+  special = false
 }
 
 # ============================================
@@ -40,18 +86,20 @@ resource "azurerm_resource_group" "main" {
 # CONTAINER REGISTRY (for Docker images)
 # ============================================
 resource "azurerm_container_registry" "main" {
-  name                = "${var.project_name}acr${var.environment}"
+  name                = "${var.project_name}acr${random_string.suffix.result}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   sku                 = "Basic" # Cheapest tier ~$5/month
   admin_enabled       = true    # For simple auth
+
+  depends_on = [azurerm_resource_provider_registration.containerregistry]
 }
 
 # ============================================
 # KEY VAULT (for secrets)
 # ============================================
 resource "azurerm_key_vault" "main" {
-  name                = "${var.project_name}-kv-${var.environment}"
+  name                = "${var.project_name}-kv-${random_string.suffix.result}"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   tenant_id           = data.azurerm_client_config.current.tenant_id
@@ -69,6 +117,8 @@ resource "azurerm_key_vault" "main" {
       "Get", "List", "Set", "Delete", "Purge", "Recover"
     ]
   }
+
+  depends_on = [azurerm_resource_provider_registration.keyvault]
 }
 
 # Store OpenAI API key in Key Vault
@@ -99,7 +149,7 @@ resource "azurerm_key_vault_secret" "anthropic_key" {
 # POSTGRESQL FLEXIBLE SERVER
 # ============================================
 resource "azurerm_postgresql_flexible_server" "main" {
-  name                   = "${var.project_name}-postgres-${var.environment}"
+  name                   = "${var.project_name}-pg-${random_string.suffix.result}"
   resource_group_name    = azurerm_resource_group.main.name
   location               = azurerm_resource_group.main.location
   version                = "16"
@@ -111,6 +161,8 @@ resource "azurerm_postgresql_flexible_server" "main" {
   storage_mb = 32768 # 32GB minimum
 
   zone = "1"
+
+  depends_on = [azurerm_resource_provider_registration.postgresql]
 }
 
 # Firewall rule - allow Azure services
@@ -152,6 +204,8 @@ resource "azurerm_log_analytics_workspace" "main" {
   resource_group_name = azurerm_resource_group.main.name
   sku                 = "PerGB2018"
   retention_in_days   = 30
+
+  depends_on = [azurerm_resource_provider_registration.operationalinsights]
 }
 
 # ============================================
@@ -162,6 +216,8 @@ resource "azurerm_container_app_environment" "main" {
   location                   = azurerm_resource_group.main.location
   resource_group_name        = azurerm_resource_group.main.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+
+  depends_on = [azurerm_resource_provider_registration.app]
 }
 
 # ============================================

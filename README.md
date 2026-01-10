@@ -20,35 +20,136 @@ The system is designed with security and scalability in mind:
 ```mermaid
 flowchart TB
     subgraph Azure["☁️ Azure Subscription"]
-        subgraph RG["📦 Resource Group"]
-            subgraph VNET["🔒 VNET (10.0.0.0/16)"]
-                subgraph AppSubnet["App Subnet (10.0.1.0/24)"]
-                    CA["🐳 Container Apps<br/>─────────────<br/>Streamlit UI :8501<br/>FastAPI API :8000"]
-                end
-                subgraph DataSubnet["Data Subnet (10.0.2.0/24)"]
-                    PG["🐘 PostgreSQL<br/>Flexible Server<br/>─────────────<br/>Private Endpoint"]
+        subgraph RG["📦 Resource Group (rg-genai-dev)"]
+            
+            subgraph Compute["🖥️ Compute Layer"]
+                CAE["🌐 Container Apps Environment<br/>─────────────<br/>genai-env-dev"]
+                
+                subgraph Apps["Container Apps"]
+                    API["⚡ genai-api<br/>─────────────<br/>FastAPI :8000<br/>Managed Identity"]
+                    UI["🖥️ genai-app<br/>─────────────<br/>Streamlit :8501<br/>Managed Identity"]
                 end
             end
-            KV["🔑 Key Vault<br/>─────────────<br/>API Keys<br/>DB Credentials"]
-            AOAI["🤖 Azure OpenAI<br/>─────────────<br/>GPT-4 / GPT-4o"]
+            
+            subgraph Data["💾 Data Layer"]
+                PG["🐘 PostgreSQL Flexible Server<br/>─────────────<br/>genai-pg-xxx<br/>pgvector enabled"]
+                DB[(app_db)]
+            end
+            
+            subgraph Security["🔐 Security Layer"]
+                KV["🔑 Key Vault<br/>─────────────<br/>genai-kv-xxx<br/>• AZURE-OPENAI-API-KEY<br/>• DATABASE-PASSWORD"]
+            end
+            
+            subgraph Registry["📦 Container Registry"]
+                ACR["🐳 Azure Container Registry<br/>─────────────<br/>genaiacrxxx<br/>• genai-api:latest<br/>• genai-app:latest"]
+            end
+            
+            subgraph Monitoring["📊 Monitoring"]
+                LA["📈 Log Analytics Workspace<br/>─────────────<br/>genai-logs-dev<br/>Container logs & metrics"]
+            end
         end
     end
-
+    
+    subgraph External["🌍 External Services"]
+        LLM["🤖 LLM Provider<br/>─────────────<br/>OpenAI API<br/>Azure OpenAI<br/>Anthropic"]
+    end
+    
     User["👤 User"]
+    CICD["🔄 GitHub Actions<br/>─────────────<br/>CI/CD Pipeline"]
 
-    User -->|HTTPS| CA
-    CA -->|"🔐 Managed Identity<br/>(Get Secrets)"| KV
-    CA -->|"🔗 Private Connection<br/>(AAD Token)"| PG
-    CA -->|"🌐 API Call<br/>(Private Endpoint)"| AOAI
+    User -->|HTTPS| UI
+    User -->|HTTPS| API
+    UI --> API
+    
+    API -->|"🔐 Managed Identity"| KV
+    UI -->|"🔐 Managed Identity"| KV
+    
+    API --> PG
+    UI --> PG
+    PG --> DB
+    
+    API -->|"API Key from KV"| LLM
+    
+    CAE --> LA
+    API --> LA
+    UI --> LA
+    
+    CICD -->|"docker push"| ACR
+    ACR -->|"pull image"| API
+    ACR -->|"pull image"| UI
 
-    style VNET fill:#e1f5fe,stroke:#01579b,stroke-width:3px
-    style AppSubnet fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style DataSubnet fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
-    style KV fill:#fce4ec,stroke:#c2185b,stroke-width:2px
-    style AOAI fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style CA fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-    style PG fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    style RG fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Compute fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style Data fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style Security fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style Registry fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style Monitoring fill:#e0f7fa,stroke:#00838f,stroke-width:2px
+    style External fill:#fafafa,stroke:#616161,stroke-width:2px
 ```
+
+### **Local Development Diagram (Docker Compose)**
+
+```mermaid
+flowchart TB
+    subgraph Local["🖥️ Local Machine (Docker Compose)"]
+        
+        subgraph Containers["🐳 Docker Containers"]
+            API["⚡ genai-api<br/>─────────────<br/>FastAPI :8000<br/>Hot reload enabled"]
+            UI["🖥️ genai-app<br/>─────────────<br/>Streamlit :8501<br/>Hot reload enabled"]
+            PG["🐘 postgres<br/>─────────────<br/>PostgreSQL :5432<br/>pgvector extension"]
+        end
+        
+        subgraph Volumes["💾 Docker Volumes"]
+            PGDATA[("postgres_data<br/>─────────────<br/>Persistent DB storage")]
+        end
+        
+        subgraph Config["⚙️ Configuration"]
+            ENV[".env file<br/>─────────────<br/>• OPENAI_API_KEY<br/>• LLM_PROVIDER<br/>• DATABASE_URL"]
+            CODE["./app<br/>─────────────<br/>Mounted source code<br/>(live reload)"]
+        end
+    end
+    
+    subgraph External["🌍 External Services"]
+        LLM["🤖 LLM Provider<br/>─────────────<br/>OpenAI API<br/>Anthropic<br/>Ollama (local)"]
+    end
+    
+    User["👤 Developer"]
+    Browser["🌐 Browser"]
+
+    User -->|"docker-compose up"| Containers
+    Browser -->|"http://localhost:8501"| UI
+    Browser -->|"http://localhost:8000/docs"| API
+    
+    UI -->|"internal network"| API
+    API --> PG
+    PG --> PGDATA
+    
+    ENV -.->|"environment"| API
+    ENV -.->|"environment"| UI
+    CODE -.->|"volume mount"| API
+    CODE -.->|"volume mount"| UI
+    
+    API -->|"API Key from .env"| LLM
+
+    style Local fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
+    style Containers fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style Volumes fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Config fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style External fill:#fafafa,stroke:#616161,stroke-width:2px
+```
+
+### **Comparison: Local vs Azure**
+
+| Aspect | Local (Docker Compose) | Azure (Container Apps) |
+|--------|------------------------|------------------------|
+| **Secrets** | `.env` file | Key Vault + Managed Identity |
+| **Database** | Docker container | PostgreSQL Flexible Server |
+| **Logs** | `docker logs` | Log Analytics Workspace |
+| **Images** | Local build | Azure Container Registry |
+| **Scaling** | Manual | Auto-scaling (0-N replicas) |
+| **Cost** | Free | ~$20-25/month |
+| **SSL/TLS** | Not included | Automatic HTTPS |
+| **Use Case** | Development | Production |
 
 ### **Request Processing Flow**
 
