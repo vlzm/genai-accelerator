@@ -119,8 +119,8 @@ sequenceDiagram
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/your-repo/azure-genai-accelerator.git
-cd azure-genai-accelerator
+git clone https://github.com/your-org/genai-accelerator.git
+cd genai-accelerator
 ```
 
 ### 2. Set up environment
@@ -179,7 +179,7 @@ Edit `terraform.tfvars` with your values:
 
 ```hcl
 # Required
-project_name      = "kyc"           # Your project name
+project_name      = "genai"         # Your project name
 environment       = "dev"           # dev, staging, prod
 db_admin_password = "YourStrongP@ssw0rd123!"
 
@@ -355,10 +355,10 @@ The project includes a production-ready CI/CD pipeline. To enable:
 
 | Provider | Environment Variables |
 |----------|----------------------|
-| OpenAI | `LLM_PROVIDER=openai`, `OPENAI_API_KEY` |
-| Azure OpenAI | `LLM_PROVIDER=azure`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` |
-| Anthropic | `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY` |
-| Ollama | `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL` |
+| OpenAI | `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL` |
+| Azure OpenAI | `LLM_PROVIDER=azure`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT_NAME` |
+| Anthropic | `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` |
+| Ollama | `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` |
 
 ## **📊 Observability Features**
 
