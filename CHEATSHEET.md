@@ -514,26 +514,4 @@ $env:TF_VAR_openai_api_key = "sk-proj-xxx"
 
 ---
 
-## 12. 🎯 Interview Quick Answers
-
-### "Why skip_provider_registration?"
-> Azure provider by default registers ~60 providers on each plan = 10-20 min. With skip + explicit registration of only needed providers, plan takes seconds.
-
-### "Why random suffix in resource names?"
-> ACR, Key Vault, PostgreSQL require globally unique names. Random suffix prevents conflicts.
-
-### "Why Managed Identity instead of secrets?"
-> Zero Trust security. No passwords stored anywhere. Container App gets temporary tokens via Azure AD.
-
-### "Why OIDC in CI/CD?"
-> No long-lived secrets in GitHub. Token generated on-the-fly, expires in minutes.
-
-### "Why scale-to-zero?"
-> Cost optimization. Pay only when app is used. Cold start ~30-60 sec.
-
-### "How to rollback deployment?"
-> Each image tagged with git SHA. Run: `az containerapp update --image xxx:previous_sha`
-
----
-
 💡 **Tip:** Keep this file open during interviews for quick reference!

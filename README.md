@@ -26,8 +26,8 @@ flowchart TB
                 CAE["🌐 Container Apps Environment<br/>─────────────<br/>genai-env-dev"]
                 
                 subgraph Apps["Container Apps"]
-                    API["⚡ genai-api<br/>─────────────<br/>FastAPI :8000<br/>Managed Identity"]
-                    UI["🖥️ genai-app<br/>─────────────<br/>Streamlit :8501<br/>Managed Identity"]
+                    API["⚡ genai-api<br/>─────────────<br/>FastAPI :8000<br/>RBAC/ABAC + Managed Identity"]
+                    UI["🖥️ genai-app<br/>─────────────<br/>Streamlit :8501<br/>Identity Simulator"]
                 end
             end
             
@@ -94,8 +94,8 @@ flowchart TB
     subgraph Local["🖥️ Local Machine (Docker Compose)"]
         
         subgraph Containers["🐳 Docker Containers"]
-            API["⚡ genai-api<br/>─────────────<br/>FastAPI :8000<br/>Hot reload enabled"]
-            UI["🖥️ genai-app<br/>─────────────<br/>Streamlit :8501<br/>Hot reload enabled"]
+            API["⚡ genai-api<br/>─────────────<br/>FastAPI :8000<br/>RBAC/ABAC enabled"]
+            UI["🖥️ genai-app<br/>─────────────<br/>Streamlit :8501<br/>Identity Simulator"]
             PG["🐘 postgres<br/>─────────────<br/>PostgreSQL :5432<br/>pgvector extension"]
         end
         
@@ -149,6 +149,8 @@ flowchart TB
 | **Scaling** | Manual | Auto-scaling (0-N replicas) |
 | **Cost** | Free | ~$20-25/month |
 | **SSL/TLS** | Not included | Automatic HTTPS |
+| **Auth** | Mock Identity Provider | Azure Entra ID (production) |
+| **RBAC/ABAC** | ✅ Same logic | ✅ Same logic |
 | **Use Case** | Development | Production |
 
 ### **Request Processing Flow**
@@ -166,7 +168,10 @@ sequenceDiagram
     User->>UI: Enter input text
     UI->>API: POST /analyze
     
-    Note over API: RBAC Check:<br/>User has ANALYZE permission?
+    rect rgb(255, 243, 224)
+        Note over API: 🔐 RBAC: User has ANALYZE permission?
+        Note over API: 🏷️ ABAC: User.group matches data?
+    end
     
     API->>DB: Create Request record
     DB-->>API: request_id
@@ -189,6 +194,11 @@ sequenceDiagram
     DB-->>API: result_id
     
     API-->>UI: Return JSON response
+    
+    rect rgb(255, 243, 224)
+        Note over UI: 🏷️ ABAC: Filter by group<br/>Hide scores > 70 for Viewers
+    end
+    
     UI-->>User: Display result card<br/>(color-coded by score)
     
     Note over User,UI: 👍/👎 Human Feedback Loop
@@ -201,7 +211,8 @@ sequenceDiagram
 
 1. **No Hardcoded Secrets:** Uses DefaultAzureCredential for automatic switching between local env vars (dev) and Managed Identity (cloud)
 2. **Network Isolation:** Terraform code supports private endpoint configuration
-3. **RBAC/ABAC:** Built-in role-based and attribute-based access control demo
+3. **RBAC:** Role-based permissions (Admin → Senior Analyst → Analyst → Viewer)
+4. **ABAC:** Attribute-based filtering (group isolation, score visibility)
 
 ## **✨ Key Features**
 
@@ -470,14 +481,21 @@ The project includes a production-ready CI/CD pipeline. To enable:
 
 ## **🔐 Security Model**
 
-### Roles
+### RBAC (Role-Based Access Control)
 
-| Role | Can Analyze | High Score Access | All Groups |
-|------|-------------|-------------------|------------|
-| Admin | ✅ | ✅ | ✅ |
-| Senior Analyst | ✅ | ✅ | ✅ |
-| Analyst | ✅ | ✅ | Own group |
-| Viewer | ❌ | ❌ | Own group |
+| Role | VIEW | ANALYZE | VIEW_SENSITIVE | VIEW_ALL_GROUPS | EXPORT |
+|------|------|---------|----------------|-----------------|--------|
+| Admin | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Senior Analyst | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Analyst | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Viewer | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+### ABAC (Attribute-Based Access Control)
+
+| Attribute | Description | Example |
+|-----------|-------------|---------|
+| `user.group` | Data isolation by group | Analyst in Group A sees only Group A data |
+| `score >= 70` | High score visibility | Viewers can't see scores ≥ 70 |
 
 ### Demo Users (Mock Identity)
 
