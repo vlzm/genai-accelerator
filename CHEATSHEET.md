@@ -514,4 +514,81 @@ $env:TF_VAR_openai_api_key = "sk-proj-xxx"
 
 ---
 
+Using as template
+
+```powershell
+cd new_repo
+git remote add template /Users/vladislav/Documents/vlzm/genai-app/genai-app
+git pull template main --allow-unrelated-histories
+git remote remove template
+git push origin main```
+
+
+Deploy:
+
+```powershell
+export TF_VAR_db_admin_password='YourStrongPassword123!'
+export TF_VAR_openai_api_key='YourStrongPassword123!'
+
+az login
+cd c:\Users\zamko\Documents\vlzm\kyc-analyzer\infra
+
+# terraform.tfvars`: westeurope, genai, etc...
+
+terraform init
+terraform plan
+terraform apply -auto-approve
+
+$RG_NAME = terraform output -raw resource_group_name
+$ACR_NAME = terraform output -raw acr_name
+$ACR_URL = terraform output -raw acr_login_server
+
+RG_NAME=$(terraform output -raw resource_group_name)
+ACR_NAME=$(terraform output -raw acr_name)
+ACR_URL=$(terraform output -raw acr_login_server)
+
+Write-Host "Resource Group: $RG_NAME"
+Write-Host "ACR Name: $ACR_NAME"
+Write-Host "ACR URL: $ACR_URL"
+
+echo "Resource Group: $RG_NAME"
+echo "ACR Name: $ACR_NAME"
+echo "ACR URL: $ACR_URL"
+
+az acr build --registry $ACR_NAME --image genai-api:latest --file Dockerfile.api .
+az acr build --registry $ACR_NAME --image genai-app:latest --file Dockerfile .
+
+az containerapp revision restart --name genai-api --resource-group $RG_NAME --revision $(az containerapp revision list --name genai-api --resource-group $RG_NAME --query "[0].name" -o tsv)
+
+az containerapp revision restart --name genai-app --resource-group $RG_NAME --revision $(az containerapp revision list --name genai-app --resource-group $RG_NAME --query "[0].name" -o tsv)
+
+
+$API_URL = terraform output -raw api_url
+$APP_URL=$(terraform output -raw app_url)
+
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Green
+Write-Host "  DEPLOYMENT COMPLETE!" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "Streamlit UI: $APP_URL" -ForegroundColor Cyan
+Write-Host "FastAPI Docs: $API_URL/docs" -ForegroundColor Cyan
+Write-Host ""
+
+az group delete --name rg-genai-dev --yes --no-wait
+
+cd c:\Users\zamko\Documents\vlzm\kyc-analyzer\infra
+Remove-Item terraform.tfstate, terraform.tfstate.backup -Force -ErrorAction SilentlyContinue
+
+# Опционально: purge Key Vault из soft-delete
+az keyvault purge --name genai-kv-xxx --no-wait
+```
+
+JUST IN CASE!!!:
+terraform import azurerm_resource_provider_registration.operationalinsights /subscriptions/number/providers/Microsoft.OperationalInsights
+terraform import azurerm_resource_provider_registration.postgresql /subscriptions/number/providers/Microsoft.DBforPostgreSQL
+terraform import azurerm_resource_provider_registration.keyvault /subscriptions/number/providers/Microsoft.KeyVault
+terraform import azurerm_resource_provider_registration.containerregistry /subscriptions/number/providers/Microsoft.ContainerRegistry
+terraform import azurerm_resource_provider_registration.app /subscriptions/number/providers/Microsoft.App
+
 💡 **Tip:** Keep this file open while working for quick reference!
