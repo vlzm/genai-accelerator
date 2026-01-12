@@ -1,4 +1,4 @@
-# 📋 Interview Cheatsheet
+# 📋 Quick Reference
 
 Quick reference for common commands used in this project.
 
@@ -514,4 +514,4 @@ $env:TF_VAR_openai_api_key = "sk-proj-xxx"
 
 ---
 
-💡 **Tip:** Keep this file open during interviews for quick reference!
+💡 **Tip:** Keep this file open while working for quick reference!

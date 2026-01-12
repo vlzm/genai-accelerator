@@ -3,10 +3,9 @@
 .env.local
 .env.production
 
-# Interview preparation (personal notes)
-Interview*
-INTERVIEW*
-interview*
+# Personal notes
+notes/
+*.notes.md
 
 # Python
 __pycache__/

@@ -4,7 +4,7 @@
 # This file contains infrastructure code for production-grade network security.
 # 
 # WHY THIS EXISTS:
-# For demo/interview purposes, we use public endpoints to ensure fast deployment
+# For demo purposes, we use public endpoints to ensure fast deployment
 # (under 5 minutes). However, for a banking environment like Rabobank, this
 # configuration would be uncommented to enable:
 #   - Private Endpoints (no public internet exposure)
